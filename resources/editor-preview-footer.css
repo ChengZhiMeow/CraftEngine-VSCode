@@ -1,0 +1,107 @@
+.craftengine-editor-branding {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 10px 14px 8px;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-editor-background);
+  border-top: 1px solid var(--vscode-panel-border);
+  font: 11px/16px var(--vscode-font-family);
+  text-align: left;
+}
+
+.editor-preview-sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.editor-preview-sidebar > .editor-preview-parameters {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.editor-preview-status-page,
+.editor-preview-sound-page {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  height: 100vh;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.editor-preview-status-page > .editor-preview-parameters,
+.editor-preview-sound-page > .editor-preview-parameters {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.editor-preview-status-page > .craftengine-editor-branding,
+.editor-preview-sound-page > .craftengine-editor-branding {
+  width: calc(100% - 36px);
+  max-width: 880px;
+  margin: 0 auto;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.craftengine-editor-ads {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.craftengine-editor-ad {
+  display: flex;
+  min-height: 32px;
+  padding: 5px 8px;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(
+    in srgb,
+    var(--vscode-editor-background) 90%,
+    transparent
+  );
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 3px;
+  text-align: center;
+}
+
+.craftengine-editor-ad-ce {
+  overflow: hidden;
+  color: var(--vscode-foreground);
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.craftengine-editor-ad-ce:hover {
+  color: var(--vscode-textLink-activeForeground);
+  border-color: var(--vscode-focusBorder);
+}
+
+.craftengine-editor-ad-ce:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}
+
+.craftengine-editor-footer {
+  min-width: 0;
+  margin-top: 9px;
+  padding-top: 8px;
+  color: var(--vscode-descriptionForeground);
+  border-top: 1px solid var(--vscode-panel-border);
+  font: 11px/16px var(--vscode-font-family);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}

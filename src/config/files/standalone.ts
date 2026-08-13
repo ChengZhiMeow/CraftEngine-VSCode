@@ -1,0 +1,708 @@
+import type { SchemaContext, SchemaField } from "../schema/types.js";
+
+import { Messages } from "../../messages.js";
+export const COMMANDS_CONFIG_VERSION = "84";
+export const TRANSLATION_LANG_VERSION = 65;
+export const TRANSLATION_LIST_SEPARATOR = "<reset><newline>";
+
+export type StandaloneFileKind = "commands" | "pack" | "translation";
+
+export interface StandaloneFileInfo {
+  readonly kind: StandaloneFileKind;
+  readonly locale?: string;
+}
+
+export interface CommandFeatureDefinition {
+  readonly id: string;
+  readonly defaultEnabled: boolean;
+  readonly defaultPermission: string;
+  readonly defaultUsage: readonly string[];
+}
+
+export type StandaloneValueKind =
+  | "mapping"
+  | "boolean"
+  | "boolean-like"
+  | "number"
+  | "stringifiable"
+  | "string"
+  | "string-list"
+  | "translation-node"
+  | "ignored";
+
+export type StandaloneUnknownKeyPolicy = "fixed" | "ignored" | "arbitrary";
+
+export interface StandaloneContextSchema {
+  readonly file: StandaloneFileInfo;
+  readonly fields: readonly SchemaField[];
+  readonly valueKind: StandaloneValueKind;
+  readonly unknownKeys: StandaloneUnknownKeyPolicy;
+  readonly dynamicKey?: SchemaField;
+  readonly listSeparator?: string;
+}
+
+interface SchemaFieldOptions {
+  readonly snippet?: string;
+  readonly valueProvider?: SchemaField["valueProvider"];
+  readonly values?: readonly string[];
+  readonly required?: boolean;
+}
+
+function field(
+  label: string,
+  detail: string,
+  options: SchemaFieldOptions = {},
+): SchemaField {
+  return {
+    label,
+    semantic: label.replaceAll("-", "_").replace(/#.*$/u, ""),
+    aliases: [],
+    detail,
+    snippet: options.snippet ?? `${label}: \${0}`,
+    ...(options.valueProvider === undefined
+      ? {}
+      : { valueProvider: options.valueProvider }),
+    ...(options.values === undefined ? {} : { values: options.values }),
+    ...(options.required === undefined ? {} : { required: options.required }),
+  };
+}
+
+export const COMMAND_FEATURES: readonly CommandFeatureDefinition[] = [
+  {
+    id: "reload",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.reload",
+    defaultUsage: ["/craftengine reload", "/ce reload"],
+  },
+  {
+    id: "upload",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.upload",
+    defaultUsage: ["/craftengine upload", "/ce upload"],
+  },
+  {
+    id: "send_resource_pack",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.send_resource_pack",
+    defaultUsage: ["/craftengine feature send-pack", "/ce feature send-pack"],
+  },
+  {
+    id: "get_item",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.get_item",
+    defaultUsage: ["/craftengine item get", "/ce item get"],
+  },
+  {
+    id: "give_item",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.give_item",
+    defaultUsage: ["/craftengine item give", "/ce item give"],
+  },
+  {
+    id: "clear_item",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.clear_item",
+    defaultUsage: ["/craftengine item clear", "/ce item clear"],
+  },
+  {
+    id: "item_browser_player",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.player.item_browser",
+    defaultUsage: ["/ce"],
+  },
+  {
+    id: "item_browser_admin",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.item_browser",
+    defaultUsage: ["/craftengine item browser", "/ce item browser"],
+  },
+  {
+    id: "search_usage_player",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.player.search_usage",
+    defaultUsage: ["/search-usage"],
+  },
+  {
+    id: "search_recipe_player",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.player.search_recipe",
+    defaultUsage: ["/search-recipe"],
+  },
+  {
+    id: "search_usage_admin",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.search_usage",
+    defaultUsage: ["/craftengine item search-usage", "/ce item search-usage"],
+  },
+  {
+    id: "search_recipe_admin",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.search_recipe",
+    defaultUsage: ["/craftengine item search-recipe", "/ce item search-recipe"],
+  },
+  {
+    id: "totem_animation",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.totem_animation",
+    defaultUsage: [
+      "/craftengine feature totem-animation",
+      "/ce feature totem-animation",
+    ],
+  },
+  {
+    id: "enchant",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.enchant",
+    defaultUsage: ["/craftengine feature enchant", "/ce feature enchant"],
+  },
+  {
+    id: "toast",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.toast",
+    defaultUsage: ["/craftengine feature toast", "/ce feature toast"],
+  },
+  {
+    id: "enable_resource",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.resource",
+    defaultUsage: ["/craftengine resource enable", "/ce resource enable"],
+  },
+  {
+    id: "disable_resource",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.resource",
+    defaultUsage: ["/craftengine resource disable", "/ce resource disable"],
+  },
+  {
+    id: "list_resource",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.resource",
+    defaultUsage: ["/craftengine resource list", "/ce resource list"],
+  },
+  {
+    id: "create_resource",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.resource",
+    defaultUsage: ["/craftengine resource create", "/ce resource create"],
+  },
+  {
+    id: "save_default_resource",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.resource",
+    defaultUsage: [
+      "/craftengine resource save-default",
+      "/ce resource save-default",
+    ],
+  },
+  {
+    id: "set_locale",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.set_locale",
+    defaultUsage: ["/ce feature locale set"],
+  },
+  {
+    id: "unset_locale",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.unset_locale",
+    defaultUsage: ["/ce feature locale unset"],
+  },
+  {
+    id: "clean_cache",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.clean_cache",
+    defaultUsage: ["/craftengine clean-cache", "/ce clean-cache"],
+  },
+  {
+    id: "set_display_entity_view_distance_scale",
+    defaultEnabled: true,
+    defaultPermission:
+      "ce.command.admin.set_display_entity_view_distance_scale",
+    defaultUsage: ["/ce feature display-entity-view-distance-scale set"],
+  },
+  {
+    id: "set_entity_culling_distance_scale",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.set_entity_culling_distance_scale",
+    defaultUsage: ["/ce feature entity-culling-distance-scale set"],
+  },
+  {
+    id: "toggle_entity_culling",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.toggle_entity_culling",
+    defaultUsage: ["/ce feature toggle-entity-culling"],
+  },
+  {
+    id: "place_feature",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.place_feature",
+    defaultUsage: ["/ce feature place-feature"],
+  },
+  {
+    id: "set_item_custom_model_data",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.custom_model_data",
+    defaultUsage: [
+      "/craftengine item custom-model-data",
+      "/ce item custom-model-data",
+    ],
+  },
+  {
+    id: "set_item_item_model",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.item_model",
+    defaultUsage: ["/craftengine item item-model", "/ce item item-model"],
+  },
+  {
+    id: "remove_item_component",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.remove_component",
+    defaultUsage: [
+      "/craftengine item remove-component",
+      "/ce item remove-component",
+    ],
+  },
+  {
+    id: "migrate_world_storage",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.migrate_world_storage",
+    defaultUsage: [
+      "/craftengine feature migrate-world-storage",
+      "/ce feature migrate-world-storage",
+    ],
+  },
+  {
+    id: "world_settings",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.world_settings",
+    defaultUsage: [
+      "/craftengine feature world-settings",
+      "/ce feature world-settings",
+    ],
+  },
+  {
+    id: "debug_set_block",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.setblock",
+    defaultUsage: ["/craftengine debug setblock", "/ce debug setblock"],
+  },
+  {
+    id: "debug_spawn_furniture",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.spawn_furniture",
+    defaultUsage: [
+      "/craftengine debug spawn-furniture",
+      "/ce debug spawn-furniture",
+    ],
+  },
+  {
+    id: "debug_get_block_state_registry_id",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.get_block_state_registry_id",
+    defaultUsage: [
+      "/craftengine debug get-block-state-registry-id",
+      "/ce debug get-block-state-registry-id",
+    ],
+  },
+  {
+    id: "debug_get_block_internal_id",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.get_block_internal_id",
+    defaultUsage: [
+      "/craftengine debug get-block-internal-id",
+      "/ce debug get-block-internal-id",
+    ],
+  },
+  {
+    id: "debug_visual_state_usage",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.state_usage",
+    defaultUsage: [
+      "/craftengine debug visual-state-usage",
+      "/craftengine debug appearance-state-usage",
+      "/craftengine debug clientside-state-usage",
+      "/ce debug visual-state-usage",
+      "/ce debug appearance-state-usage",
+      "/ce debug clientside-state-usage",
+    ],
+  },
+  {
+    id: "debug_auto_state_usage",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.state_usage",
+    defaultUsage: [
+      "/craftengine debug auto-state-usage",
+      "/ce debug auto-state-usage",
+    ],
+  },
+  {
+    id: "debug_real_state_usage",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.state_usage",
+    defaultUsage: [
+      "/craftengine debug real-state-usage",
+      "/craftengine debug serverside-state-usage",
+      "/ce debug real-state-usage",
+      "/ce debug serverside-state-usage",
+    ],
+  },
+  {
+    id: "debug_item_data",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.item_data",
+    defaultUsage: [
+      "/craftengine debug item-data",
+      "/ce debug item-data",
+      "/ce item debug",
+    ],
+  },
+  {
+    id: "debug_target_block",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.target_block",
+    defaultUsage: ["/craftengine debug target-block", "/ce debug target-block"],
+  },
+  {
+    id: "debug_is_section_injected",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.is_section_injected",
+    defaultUsage: [
+      "/craftengine debug is-section-injected",
+      "/ce debug is-section-injected",
+    ],
+  },
+  {
+    id: "debug_clear_cooldown",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.clear_cooldown",
+    defaultUsage: [
+      "/craftengine debug clear-cooldown",
+      "/ce debug clear-cooldown",
+    ],
+  },
+  {
+    id: "debug_migrate_templates",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.migrate_templates",
+    defaultUsage: [
+      "/craftengine debug migrate-templates",
+      "/ce debug migrate-templates",
+    ],
+  },
+  {
+    id: "debug_is_chunk_persistent_loaded",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.is_chunk_persistent_loaded",
+    defaultUsage: [
+      "/craftengine debug is-chunk-persistent-loaded",
+      "/ce debug is-chunk-persistent-loaded",
+    ],
+  },
+  {
+    id: "debug_entity_id",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.entity_id",
+    defaultUsage: ["/craftengine debug entity-id", "/ce debug entity-id"],
+  },
+  {
+    id: "debug_custom_model_data",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.custom_model_data",
+    defaultUsage: [
+      "/craftengine debug custom-model-data",
+      "/ce debug custom-model-data",
+    ],
+  },
+  {
+    id: "debug_item_model",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.item_model",
+    defaultUsage: ["/craftengine debug item-model", "/ce debug item-model"],
+  },
+  {
+    id: "debug_image",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.image",
+    defaultUsage: ["/craftengine debug image", "/ce debug image"],
+  },
+  {
+    id: "debug_generate_internal_assets",
+    defaultEnabled: false,
+    defaultPermission: "ce.command.debug.generate_internal_assets",
+    defaultUsage: [
+      "/craftengine debug generate-internal-assets",
+      "/ce debug generate-internal-assets",
+    ],
+  },
+  {
+    id: "debug_furniture",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.furniture",
+    defaultUsage: ["/craftengine debug furniture", "/ce debug furniture"],
+  },
+  {
+    id: "debug_optimize_furniture_structure",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.optimize_furniture_structure",
+    defaultUsage: [
+      "/craftengine debug optimize-furniture-structure",
+      "/ce debug optimize-furniture-structure",
+    ],
+  },
+  {
+    id: "debug_test",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.test",
+    defaultUsage: ["/craftengine debug test", "/ce debug test"],
+  },
+];
+
+export const COMMAND_ROOT_FIELDS: readonly SchemaField[] = [
+  field("config-version", Messages.src.config.files.standalone.text0001, {
+    snippet: `config-version: "${COMMANDS_CONFIG_VERSION}"`,
+    values: [`"${COMMANDS_CONFIG_VERSION}"`],
+  }),
+  ...COMMAND_FEATURES.map((feature) =>
+    field(
+      feature.id,
+      Messages.src.config.files.standalone.text0002(
+        feature.defaultPermission,
+        feature.defaultUsage.length,
+      ),
+      {
+        snippet: `${feature.id}:\n  enable: ${feature.defaultEnabled}\n  permission: ${feature.defaultPermission}\n  usage:\n${feature.defaultUsage.map((entry) => `    - ${entry}`).join("\n")}`,
+      },
+    ),
+  ),
+];
+
+export const PACK_ROOT_FIELDS: readonly SchemaField[] = [
+  field("enable", Messages.src.config.files.standalone.text0006, {
+    snippet: "enable: ${0|true,false|}",
+    valueProvider: "boolean",
+    values: ["true", "false"],
+  }),
+  field("namespace", Messages.src.config.files.standalone.text0007),
+  field("description", Messages.src.config.files.standalone.text0008),
+  field("version", Messages.src.config.files.standalone.text0009, {
+    snippet: 'version: "${0:1.0.0}"',
+  }),
+  field("author", Messages.src.config.files.standalone.text0010),
+  field("subpacks", Messages.src.config.files.standalone.text0011, {
+    snippet: "subpacks:\n  ${1:modern}: ${0|true,false|}",
+  }),
+];
+
+export const TRANSLATION_ROOT_FIELDS: readonly SchemaField[] = [
+  field("lang-version", Messages.src.config.files.standalone.text0012, {
+    snippet: `lang-version: ${TRANSLATION_LANG_VERSION}`,
+    valueProvider: "number",
+    values: [String(TRANSLATION_LANG_VERSION)],
+  }),
+];
+
+export const TRANSLATION_DYNAMIC_FIELD: SchemaField = field(
+  "<translation-key>",
+  Messages.src.config.files.standalone.text0013(TRANSLATION_LIST_SEPARATOR),
+  { snippet: "${1:translation.key}: ${0}" },
+);
+
+export function standaloneFileInfo(
+  filePath: string,
+): StandaloneFileInfo | undefined {
+  const parts = filePath
+    .replaceAll("\\", "/")
+    .split("/")
+    .filter((part) => part.length > 0);
+  const fileName = parts.at(-1);
+  if (fileName === undefined) return undefined;
+
+  if (
+    parts.at(-2) === "translations" &&
+    fileName.endsWith(".yml") &&
+    fileName.length > ".yml".length
+  ) {
+    if (parts.slice(0, parts.length - 2).includes("configuration"))
+      return undefined;
+    return { kind: "translation", locale: fileName.slice(0, -".yml".length) };
+  }
+  if (fileName === "commands.yml") return { kind: "commands" };
+  if (fileName === "pack.yml") return { kind: "pack" };
+  return undefined;
+}
+
+export function standaloneSchemaForContext(
+  filePath: string,
+  context: SchemaContext,
+): StandaloneContextSchema | undefined {
+  const file = standaloneFileInfo(filePath);
+  if (file === undefined) return undefined;
+  const path = context.path;
+  switch (file.kind) {
+    case "commands": {
+      if (path.length === 0)
+        return {
+          file,
+          fields: COMMAND_ROOT_FIELDS,
+          valueKind: "mapping",
+          unknownKeys: "ignored",
+        };
+      if (path[0] === "config-version")
+        return { file, fields: [], valueKind: "string", unknownKeys: "fixed" };
+
+      const feature = COMMAND_FEATURES.find(
+        (candidate) => candidate.id === (path[0] ?? ""),
+      );
+      if (feature === undefined)
+        return {
+          file,
+          fields: [],
+          valueKind: "ignored",
+          unknownKeys: "ignored",
+        };
+      if (path.length === 1)
+        return {
+          file,
+          fields: [
+            field("enable", Messages.src.config.files.standalone.text0003, {
+              snippet: `enable: ${feature.defaultEnabled}`,
+              valueProvider: "boolean",
+              values: ["true", "false"],
+            }),
+            field("permission", Messages.src.config.files.standalone.text0004, {
+              snippet: `permission: ${feature.defaultPermission}`,
+            }),
+            field("usage", Messages.src.config.files.standalone.text0005, {
+              snippet: `usage:\n${feature.defaultUsage.map((entry) => `  - ${entry}`).join("\n")}`,
+            }),
+          ],
+          valueKind: "mapping",
+          unknownKeys: "ignored",
+        };
+      switch (path[1]) {
+        case "enable":
+          return {
+            file,
+            fields: [],
+            valueKind: "boolean",
+            unknownKeys: "fixed",
+          };
+        case "permission":
+          return {
+            file,
+            fields: [],
+            valueKind: "string",
+            unknownKeys: "fixed",
+          };
+        case "usage":
+          return {
+            file,
+            fields: [],
+            valueKind: "string-list",
+            unknownKeys: "fixed",
+          };
+        default:
+          return {
+            file,
+            fields: [],
+            valueKind: "ignored",
+            unknownKeys: "ignored",
+          };
+      }
+    }
+    case "pack":
+      if (path.length === 0)
+        return {
+          file,
+          fields: PACK_ROOT_FIELDS,
+          valueKind: "mapping",
+          unknownKeys: "ignored",
+        };
+      switch (path[0]) {
+        case "subpacks":
+          if (path.length > 1)
+            return {
+              file,
+              fields: [],
+              valueKind: "boolean-like",
+              unknownKeys: "fixed",
+            };
+          return {
+            file,
+            fields: [],
+            valueKind: "mapping",
+            unknownKeys: "arbitrary",
+            dynamicKey: field(
+              "<subpack-id>",
+              Messages.src.config.files.standalone.text0014,
+              {
+                snippet: "${1:subpack}: ${0|true,false|}",
+                valueProvider: "boolean",
+                values: ["true", "false"],
+              },
+            ),
+          };
+        case "enable":
+          if (path.length === 1)
+            return {
+              file,
+              fields: [],
+              valueKind: "boolean-like",
+              unknownKeys: "fixed",
+            };
+          return {
+            file,
+            fields: [],
+            valueKind: "ignored",
+            unknownKeys: "ignored",
+          };
+        case "namespace":
+          if (path.length === 1)
+            return {
+              file,
+              fields: [],
+              valueKind: "string",
+              unknownKeys: "fixed",
+            };
+          return {
+            file,
+            fields: [],
+            valueKind: "ignored",
+            unknownKeys: "ignored",
+          };
+        case "description":
+        case "version":
+        case "author":
+          if (path.length === 1)
+            return {
+              file,
+              fields: [],
+              valueKind: "stringifiable",
+              unknownKeys: "fixed",
+            };
+          return {
+            file,
+            fields: [],
+            valueKind: "ignored",
+            unknownKeys: "ignored",
+          };
+        default:
+          return {
+            file,
+            fields: [],
+            valueKind: "ignored",
+            unknownKeys: "ignored",
+          };
+      }
+    case "translation":
+      if (path.length === 1 && path[0] === "lang-version")
+        return { file, fields: [], valueKind: "number", unknownKeys: "fixed" };
+      return {
+        file,
+        fields: path.length === 0 ? TRANSLATION_ROOT_FIELDS : [],
+        valueKind: path.length === 0 ? "mapping" : "translation-node",
+        unknownKeys: "arbitrary",
+        dynamicKey: TRANSLATION_DYNAMIC_FIELD,
+        listSeparator: TRANSLATION_LIST_SEPARATOR,
+      };
+  }
+}

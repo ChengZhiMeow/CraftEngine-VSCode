@@ -1,0 +1,268 @@
+{
+  "name": "craftengine-yaml",
+  "displayName": "CraftEngine",
+  "description": "橙汁喵开发的 CraftEngine 配置预览引擎",
+  "version": "1.0.1",
+  "author": "ChengZhiMeow",
+  "publisher": "ChengZhiMeow",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "keywords": [
+    "CraftEngine",
+    "Minecraft",
+    "YAML",
+    "resource pack",
+    "bitmap font",
+    "items",
+    "item model",
+    "blocks",
+    "block states",
+    "furniture",
+    "hitboxes",
+    "loot",
+    "sounds",
+    "audio"
+  ],
+  "main": "./target/dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onLanguage:yaml",
+    "onCommand:craftengineYaml.previewImage",
+    "onCommand:craftengineYaml.previewItem",
+    "onCommand:craftengineYaml.previewFurniture",
+    "onCommand:craftengineYaml.previewBlockState",
+    "onCommand:craftengineYaml.previewSound",
+    "onCommand:craftengineYaml.redownloadMinecraftAssets",
+    "onCommand:craftengineYaml.selectMaterial",
+    "onCommand:craftengineYaml.bindResourcesRoot",
+    "onCommand:craftengineYaml.showMenu",
+    "onCommand:craftengineYaml.rebuildIndex",
+    "onWebviewPanel:craftengineYaml.preview",
+    "onWebviewPanel:craftengineYaml.itemPreview",
+    "onWebviewPanel:craftengineYaml.furniturePreview",
+    "onWebviewPanel:craftengineYaml.soundPreview"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "craftengineYaml.previewImage",
+        "title": "预览光标处图片",
+        "category": "CraftEngine"
+      },
+      {
+        "command": "craftengineYaml.previewItem",
+        "title": "预览光标处物品",
+        "category": "CraftEngine"
+      },
+      {
+        "command": "craftengineYaml.previewFurniture",
+        "title": "预览光标处家具",
+        "category": "CraftEngine"
+      },
+      {
+        "command": "craftengineYaml.previewBlockState",
+        "title": "预览光标处方块状态",
+        "category": "CraftEngine"
+      },
+      {
+        "command": "craftengineYaml.previewSound",
+        "title": "试听光标处音效",
+        "category": "CraftEngine"
+      },
+      {
+        "command": "craftengineYaml.redownloadMinecraftAssets",
+        "title": "重新下载 Minecraft 26.2 资源",
+        "category": "CraftEngine"
+      },
+      {
+        "command": "craftengineYaml.bindResourcesRoot",
+        "title": "绑定 resources 根目录",
+        "category": "CraftEngine"
+      },
+      {
+        "command": "craftengineYaml.showMenu",
+        "title": "打开 CraftEngine 操作菜单",
+        "category": "CraftEngine"
+      },
+      {
+        "command": "craftengineYaml.rebuildIndex",
+        "title": "重建配置索引",
+        "category": "CraftEngine",
+        "icon": "$(refresh)"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "craftengineYaml.previewImage",
+          "when": "editorLangId == yaml",
+          "group": "navigation@20"
+        },
+        {
+          "command": "craftengineYaml.rebuildIndex",
+          "when": "editorLangId == yaml",
+          "group": "navigation@30"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "craftengineYaml.rebuildIndex",
+          "when": "editorLangId == yaml",
+          "group": "navigation@30"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CraftEngine YAML",
+      "properties": {
+        "craftengineYaml.resourcesRoot": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "description": "可选的 CraftEngine resources 绝对路径。留空时自动发现。"
+        },
+        "craftengineYaml.preview.showInlineButton": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "显示图片和物品声明上方的预览、选择物品操作。"
+        },
+        "craftengineYaml.preview.defaultZoom": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 16,
+          "default": 0,
+          "scope": "resource",
+          "description": "预览初始缩放。0 表示自动适应窗口（默认），1–16 表示固定倍数。"
+        },
+        "craftengineYaml.diagnostics.includeInactive": {
+          "type": "boolean",
+          "default": false,
+          "scope": "resource",
+          "description": "包含停用包和非活跃子包的校验诊断；运行时 ID 冲突仍只计算活跃项。"
+        },
+        "craftengineYaml.diagnostics.unknownExtensionSyntax": {
+          "type": "string",
+          "enum": [
+            "ignore",
+            "warning"
+          ],
+          "enumDescriptions": [
+            "完全忽略合法但当前未知的可写注册表 ID，不检查其扩展载荷子树。",
+            "只在合法但当前未知的可写注册表 ID 上显示 Warning，仍不检查其扩展载荷子树。"
+          ],
+          "default": "ignore",
+          "scope": "resource",
+          "description": "如何处理可能由外部插件写入的未知注册表 ID（如 item settings、behavior、模型、函数与条件）；默认完全忽略，非法 ID 仍报错。"
+        },
+        "craftengineYaml.text.showTranslationAnnotations": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "显示 MiniMessage 翻译与全局变量引用的原位译文和 i18n Ally 风格悬浮表格。"
+        },
+        "craftengineYaml.text.displayLanguage": {
+          "type": "string",
+          "default": "zh_cn",
+          "scope": "resource",
+          "description": "原位注释优先显示的 locale；找不到时回退到源语言。"
+        },
+        "craftengineYaml.text.sourceLanguage": {
+          "type": "string",
+          "default": "en_us",
+          "scope": "resource",
+          "description": "显示语言缺失时使用的回退 locale。"
+        },
+        "craftengineYaml.text.ignoredLocales": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "scope": "resource",
+          "description": "不在悬浮翻译表格中显示的其他 locale；显示语言和源语言始终保留。"
+        },
+        "craftengineYaml.text.annotationInPlace": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "description": "隐藏完整 MiniMessage 标签并在原位置显示解析文本；关闭时保留标签、加下划线并尾随译文。"
+        },
+        "craftengineYaml.text.annotationMaxLength": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 40,
+          "scope": "resource",
+          "description": "原位注释和尾随译文的最大字符数；0 表示不限制。"
+        },
+        "craftengineYaml.text.annotationDelimiter": {
+          "type": "string",
+          "default": "·",
+          "scope": "resource",
+          "description": "关闭原位模式时，标签与尾随译文之间使用的分隔符。"
+        },
+        "craftengineYaml.text.theme.annotation": {
+          "type": "string",
+          "default": "rgba(153, 153, 153, .8)",
+          "scope": "resource",
+          "description": "正常译文的文字颜色（CSS 颜色）。"
+        },
+        "craftengineYaml.text.theme.annotationMissing": {
+          "type": "string",
+          "default": "rgba(153, 153, 153, .3)",
+          "scope": "resource",
+          "description": "显示语言缺失并回退源语言时的文字颜色（CSS 颜色）。"
+        },
+        "craftengineYaml.text.theme.annotationBorder": {
+          "type": "string",
+          "default": "rgba(153, 153, 153, .2)",
+          "scope": "resource",
+          "description": "正常原位译文的边框颜色（CSS 颜色）。"
+        },
+        "craftengineYaml.text.theme.annotationMissingBorder": {
+          "type": "string",
+          "default": "rgba(153, 153, 153, .2)",
+          "scope": "resource",
+          "description": "显示语言缺失并回退源语言时的边框颜色（CSS 颜色）。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "node ./esbuild.mjs",
+    "watch": "node ./esbuild.mjs --watch",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.render.json --noEmit",
+    "lint": "eslint .",
+    "check": "npm run typecheck && npm run lint && npm run compile"
+  },
+  "dependencies": {
+    "adm-zip": "0.6.0",
+    "jsonc-parser": "^3.3.1",
+    "minimessage-js": "2.0.1",
+    "pngjs": "7.0.0",
+    "three": "0.180.0",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/adm-zip": "0.5.7",
+    "@types/node": "24.3.0",
+    "@types/pngjs": "6.0.5",
+    "@types/three": "0.180.0",
+    "@types/vscode": "1.90.0",
+    "esbuild": "0.28.2",
+    "eslint": "10.8.1",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.66.0"
+  }
+}

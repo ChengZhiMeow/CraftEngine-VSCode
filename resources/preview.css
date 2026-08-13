@@ -1,0 +1,534 @@
+:root {
+  color-scheme: light dark;
+}
+
+@font-face {
+  font-family: "MinecraftPreview";
+  src: url("./chat/minecraft.woff") format("woff");
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "MinecraftUnicode";
+  src: url("./unifont.woff2") format("woff2");
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  font: 13px var(--vscode-font-family);
+  overflow: hidden;
+}
+
+header {
+  min-height: 52px;
+  padding: 9px 14px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+header strong {
+  display: block;
+  font-size: 15px;
+}
+
+#meta {
+  display: block;
+  margin-top: 3px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+button,
+select,
+input {
+  color: var(--vscode-input-foreground);
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 4px;
+  min-height: 27px;
+  font: inherit;
+}
+
+select option,
+select optgroup {
+  color: var(--vscode-dropdown-foreground);
+  background: var(--vscode-dropdown-background);
+}
+
+body.vscode-dark select,
+body.vscode-high-contrast select {
+  color-scheme: dark;
+}
+
+body.vscode-light select,
+body.vscode-high-contrast-light select {
+  color-scheme: light;
+}
+
+button {
+  border: 0;
+  padding: 5px 11px;
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+button.secondary {
+  color: var(--vscode-button-secondaryForeground);
+  background: var(--vscode-button-secondaryBackground);
+}
+
+button.secondary:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+main {
+  display: grid;
+  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  height: calc(100vh - 52px);
+  min-height: 0;
+}
+
+aside {
+  padding: 14px;
+  overflow: auto;
+  border-right: 1px solid var(--vscode-panel-border);
+}
+
+section {
+  margin: 0;
+}
+
+h3 {
+  margin: 16px 0 10px;
+  padding-bottom: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vscode-foreground);
+  border-bottom: 1px solid var(--vscode-panel-border);
+}
+
+.control-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+.control-field > select,
+.control-field > input {
+  width: 100%;
+  padding: 4px 7px;
+}
+
+.control-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.control-title small {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.paired-control {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) 78px;
+  gap: 9px;
+  align-items: center;
+}
+
+.paired-control input[type="range"] {
+  width: 100%;
+  min-height: 24px;
+  accent-color: var(--vscode-progressBar-background);
+}
+
+.number-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.number-box input {
+  width: 100%;
+  padding: 3px 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.number-box > span {
+  position: absolute;
+  right: 22px;
+  color: var(--vscode-descriptionForeground);
+  pointer-events: none;
+}
+
+.wide-button {
+  width: 100%;
+  margin: 1px 0 2px;
+}
+
+.save-row {
+  display: grid;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+#save-config:disabled,
+#reset-config:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+#save-status {
+  min-height: 16px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+#save-status[data-kind="error"] {
+  color: var(--vscode-errorForeground);
+}
+
+#save-status[data-kind="dirty"] {
+  color: var(--vscode-editorWarning-foreground);
+}
+
+.rgba-control {
+  display: grid;
+  grid-template-columns: 1fr 28px;
+  gap: 8px;
+  align-items: center;
+}
+
+.rgba-control input {
+  width: 100%;
+  padding: 4px 7px;
+  font-family: var(--vscode-editor-font-family);
+}
+
+.rgba-control input[aria-invalid="true"] {
+  border-color: var(--vscode-inputValidation-errorBorder);
+  background: var(--vscode-inputValidation-errorBackground);
+}
+
+.rgba-swatch {
+  width: 27px;
+  height: 27px;
+  min-height: 27px;
+  padding: 0;
+  border: 1px solid var(--vscode-contrastBorder, var(--vscode-panel-border));
+  border-radius: 4px;
+  background-color: transparent;
+  background-image:
+    linear-gradient(45deg, #888 25%, transparent 25%),
+    linear-gradient(-45deg, #888 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #888 75%),
+    linear-gradient(-45deg, transparent 75%, #888 75%);
+  background-size: 8px 8px;
+  background-position:
+    0 0,
+    0 4px,
+    4px -4px,
+    -4px 0;
+  box-shadow: inset 0 0 0 20px var(--swatch, transparent);
+}
+
+.rgba-swatch:hover,
+.rgba-swatch[aria-expanded="true"] {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+  background-color: transparent;
+}
+
+.rgba-picker {
+  position: fixed;
+  z-index: 30;
+  width: min(286px, calc(100vw - 16px));
+  padding: 12px;
+  color: var(--vscode-editorWidget-foreground, var(--vscode-foreground));
+  background: var(
+    --vscode-editorWidget-background,
+    var(--vscode-editor-background)
+  );
+  border: 1px solid
+    var(--vscode-editorWidget-border, var(--vscode-panel-border));
+  border-radius: 6px;
+  box-shadow: 0 9px 30px color-mix(in srgb, #000 48%, transparent);
+}
+
+.rgba-picker-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 11px;
+}
+
+.rgba-picker-header strong {
+  font-size: 13px;
+}
+
+.picker-close {
+  width: 25px;
+  height: 25px;
+  min-height: 25px;
+  padding: 0;
+  color: var(--vscode-foreground);
+  background: transparent;
+  font-size: 18px;
+  line-height: 20px;
+}
+
+.picker-close:hover {
+  background: var(--vscode-toolbar-hoverBackground);
+}
+
+.picker-field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 11px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+
+#rgba-picker-color {
+  width: 100%;
+  height: 35px;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.rgba-channels {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 7px;
+  margin-bottom: 11px;
+}
+
+.rgba-channels label {
+  display: grid;
+  gap: 4px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+}
+
+.rgba-channels input {
+  width: 100%;
+  padding: 3px 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+#rgba-picker-alpha {
+  width: 100%;
+  min-height: 24px;
+  accent-color: var(--vscode-progressBar-background);
+}
+
+.hint {
+  margin: -1px 0 10px;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.stage {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  background: var(--vscode-editor-background);
+}
+
+.canvas-viewport {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  background:
+    linear-gradient(
+        45deg,
+        color-mix(in srgb, var(--vscode-editor-foreground) 4%, transparent) 25%,
+        transparent 25%
+      )
+      0 0 / 18px 18px,
+    linear-gradient(
+        -45deg,
+        color-mix(in srgb, var(--vscode-editor-foreground) 4%, transparent) 25%,
+        transparent 25%
+      )
+      0 9px / 18px 18px,
+    linear-gradient(
+        45deg,
+        transparent 75%,
+        color-mix(in srgb, var(--vscode-editor-foreground) 4%, transparent) 75%
+      )
+      9px -9px / 18px 18px,
+    linear-gradient(
+        -45deg,
+        transparent 75%,
+        color-mix(in srgb, var(--vscode-editor-foreground) 4%, transparent) 75%
+      ) -9px
+      0 / 18px 18px;
+}
+
+.canvas-center {
+  display: grid;
+  place-items: center;
+  min-width: 100%;
+  min-height: 100%;
+  width: max-content;
+  height: max-content;
+  padding: 18px;
+}
+
+canvas {
+  display: block;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  box-shadow: 0 8px 28px color-mix(in srgb, #000 38%, transparent);
+}
+
+canvas.chat-render {
+  image-rendering: auto;
+}
+
+.zoom-status {
+  min-height: 34px;
+  padding: 4px 8px 4px 11px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--vscode-descriptionForeground);
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+  border-top: 1px solid var(--vscode-panel-border);
+  font-size: 11px;
+}
+
+.zoom-toolbar {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+}
+
+.status-button {
+  min-height: 25px;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--vscode-statusBar-foreground, var(--vscode-foreground));
+  background: transparent;
+}
+
+.status-button:hover {
+  border-color: var(--vscode-toolbar-hoverOutline, transparent);
+  background: var(
+    --vscode-toolbar-hoverBackground,
+    var(--vscode-list-hoverBackground)
+  );
+}
+
+.zoom-step {
+  width: 28px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.zoom-value {
+  min-width: 55px;
+  font-variant-numeric: tabular-nums;
+}
+
+.zoom-editor {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 60px;
+}
+
+.zoom-editor input {
+  width: 60px;
+  height: 25px;
+  min-height: 25px;
+  padding: 2px 19px 2px 5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.zoom-editor > span {
+  position: absolute;
+  right: 6px;
+  color: var(--vscode-descriptionForeground);
+  pointer-events: none;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 780px) {
+  main {
+    grid-template-columns: 270px minmax(0, 1fr);
+  }
+
+  .paired-control {
+    grid-template-columns: minmax(80px, 1fr) 70px;
+  }
+}
+
+@media (max-width: 560px) {
+  body {
+    overflow: auto;
+  }
+
+  main {
+    display: block;
+    height: auto;
+  }
+
+  aside {
+    border-right: 0;
+    border-bottom: 1px solid var(--vscode-panel-border);
+  }
+
+  .stage {
+    height: 60vh;
+    min-height: 320px;
+  }
+}

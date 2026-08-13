@@ -1,0 +1,153 @@
+main {
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+}
+
+aside section + section {
+  margin-top: 20px;
+}
+
+.control-field {
+  margin: 9px 0;
+}
+
+.configured-value {
+  display: block;
+  padding: 5px 7px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  overflow-wrap: anywhere;
+}
+
+.control-field > small {
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.4;
+}
+
+#player-yaw-hint {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.number-box input {
+  padding: 3px 25px 3px 6px;
+}
+
+.number-box > span {
+  right: 8px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 7px 0;
+}
+
+.check input {
+  min-height: auto;
+  accent-color: var(--vscode-checkbox-selectBackground);
+}
+
+details {
+  margin-top: 8px;
+}
+
+summary {
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+}
+
+#type-filters,
+#source-filters,
+#instance-filters {
+  padding: 4px 0;
+}
+#source-filters {
+  border-top: 1px solid var(--vscode-panel-border);
+  margin-top: 6px;
+  padding-top: 8px;
+}
+
+.stage {
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(
+    circle at 50% 40%,
+    color-mix(in srgb, var(--vscode-editor-background) 80%, #43516b 20%),
+    var(--vscode-editor-background)
+  );
+}
+
+#canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: var(--vscode-descriptionForeground);
+}
+
+#legend {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--vscode-panel-border);
+  border-radius: 5px;
+  background: color-mix(
+    in srgb,
+    var(--vscode-editor-background) 82%,
+    transparent
+  );
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  text-align: center;
+  pointer-events: none;
+}
+
+#legend .legend-chip {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  margin: 1px 7px;
+  white-space: nowrap;
+}
+
+#legend .legend-color {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+
+#issues {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--vscode-descriptionForeground);
+}
+
+#issues li {
+  margin: 6px 0;
+  line-height: 1.45;
+}
+
+@media (max-width: 760px) {
+  main {
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(260px, 42vh) minmax(360px, 1fr);
+  }
+
+  aside {
+    border-right: 0;
+    border-bottom: 1px solid var(--vscode-panel-border);
+  }
+}

@@ -1,0 +1,12 @@
+.git/**
+.gitignore
+**/*.log
+node_modules/**
+package-lock.json
+src/**
+target/*.vsix
+**/*.map
+tsconfig.json
+tsconfig.render.json
+eslint.config.mjs
+esbuild.mjs
