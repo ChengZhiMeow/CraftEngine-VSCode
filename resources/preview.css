@@ -67,7 +67,8 @@ header strong {
 
 button,
 select,
-input {
+input,
+textarea {
   color: var(--vscode-input-foreground);
   background: var(--vscode-input-background);
   border: 1px solid var(--vscode-input-border, transparent);
@@ -148,9 +149,22 @@ h3 {
 }
 
 .control-field > select,
-.control-field > input {
+.control-field > input,
+.control-field > textarea {
   width: 100%;
   padding: 4px 7px;
+}
+
+.control-field > textarea {
+  min-height: 76px;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.control-field > small {
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .control-title {

@@ -4686,10 +4686,11 @@ export const Messages = {
       <section id="chat-controls">
         <h3>聊天栏参数</h3>
         <label class="control-field"><span>聊天场景</span><select id="chat-scene"><option value="grass">草地</option><option value="desert">沙漠</option><option value="stone">石地</option><option value="water">水域</option></select></label>
+        <label class="control-field"><span>聊天文字（多行）</span><textarea id="chat-output" rows="4" maxlength="1000" placeholder="每行一条消息, 全部显示在贴图右侧" spellcheck="false">Steve</textarea><small>所有行都跟在当前图片后面, 剩余宽度不足时自动换行, 最后一行位于最下方</small></label>
         <label class="control-field"><span>输入栏文字</span><input id="chat-input" type="text" value="" maxlength="40" spellcheck="false"></label>
         <div class="control-field"><label for="text-rgba">文字颜色（RGBA）</label><span class="rgba-control"><input id="text-rgba" type="text" value="rgba(255, 255, 255, 1)" spellcheck="false"><button id="text-rgba-swatch" class="rgba-swatch" type="button" aria-label="打开文字颜色调色盘" aria-haspopup="dialog" aria-expanded="false"></button></span></div>
         <div class="control-field"><label for="background-rgba">背景颜色（RGBA）</label><span class="rgba-control"><input id="background-rgba" type="text" value="rgba(0, 0, 0, 0.4)" spellcheck="false"><button id="background-rgba-swatch" class="rgba-swatch" type="button" aria-label="打开背景颜色调色盘" aria-haspopup="dialog" aria-expanded="false"></button></span></div>
-        <p class="hint">聊天栏高度、图片占用行数和背景行数会根据当前图片自动计算</p>
+        <p class="hint">聊天栏高度、图片占用行数、文字行数和背景行数会自动计算</p>
       </section>
       <section id="container-controls" hidden>
         <h3>容器参数</h3>

@@ -82,6 +82,10 @@ function inputById(id: string): HTMLInputElement {
   return element(id, HTMLInputElement);
 }
 
+function textAreaById(id: string): HTMLTextAreaElement {
+  return element(id, HTMLTextAreaElement);
+}
+
 function selectById(id: string): HTMLSelectElement {
   return element(id, HTMLSelectElement);
 }
@@ -96,11 +100,15 @@ function byId(id: string): HTMLElement {
 
 function optionalValueControl(
   id: string,
-): HTMLInputElement | HTMLSelectElement | undefined {
+): HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | undefined {
   const value = document.getElementById(id);
-  return value instanceof HTMLInputElement || value instanceof HTMLSelectElement
-    ? value
-    : undefined;
+  if (
+    value instanceof HTMLInputElement ||
+    value instanceof HTMLSelectElement ||
+    value instanceof HTMLTextAreaElement
+  )
+    return value;
+  return undefined;
 }
 
 function number(id: string): number {
@@ -171,7 +179,8 @@ function saveState(): void {
     HTMLInputElement,
   );
   const selects = queryElements("select[id]", HTMLSelectElement);
-  for (const control of [...inputs, ...selects])
+  const textAreas = queryElements("textarea[id]", HTMLTextAreaElement);
+  for (const control of [...inputs, ...selects, ...textAreas])
     controls[control.id] = control.value;
   vscode.setState({
     controls,
@@ -488,6 +497,70 @@ function drawChatInput(
   ctx.restore();
 }
 
+function chatOutputLines(): readonly string[] {
+  const value = textAreaById("chat-output").value;
+  if (!value) return [];
+  return value.replaceAll("\r\n", "\n").replaceAll("\r", "\n").split("\n");
+}
+
+function useMinecraftFont(fontSize: number): void {
+  ctx.font = `${fontSize}px "MinecraftPreview", "MinecraftUnicode"`;
+  ctx.fontKerning = "none";
+}
+
+function wrappedChatOutputLines(
+  maximumWidth: number,
+  fontSize: number,
+): readonly string[] {
+  const lines = chatOutputLines();
+  if (lines.length === 0 || maximumWidth <= 0) return lines;
+  ctx.save();
+  useMinecraftFont(fontSize);
+  const wrapped = lines.flatMap((line) => {
+    if (!line) return [""];
+    const result: string[] = [];
+    let current = "";
+    for (const character of line) {
+      const candidate = `${current}${character}`;
+      if (current && ctx.measureText(candidate).width > maximumWidth) {
+        result.push(current);
+        current = character;
+        continue;
+      }
+      current = candidate;
+    }
+    result.push(current);
+    return result;
+  });
+  ctx.restore();
+  return wrapped;
+}
+
+function drawMinecraftText(
+  text: string,
+  x: number,
+  y: number,
+  fontSize: number,
+  shadowOffset: number,
+  tint: helpers.RgbaColor,
+  clip: helpers.CropRectangle,
+): void {
+  if (!text) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(clip.x, clip.y, clip.width, clip.height);
+  ctx.clip();
+  useMinecraftFont(fontSize);
+  ctx.textBaseline = "top";
+  ctx.fillStyle = `rgba(${Math.floor(tint.r / 4)}, ${Math.floor(
+    tint.g / 4,
+  )}, ${Math.floor(tint.b / 4)}, ${tint.a})`;
+  ctx.fillText(text, x + shadowOffset, y + shadowOffset);
+  ctx.fillStyle = tint.css;
+  ctx.fillText(text, x, y);
+  ctx.restore();
+}
+
 function drawChat(data: GlyphMetrics, width: number, height: number): void {
   if (!payload) return;
   drawScene(width, height);
@@ -504,8 +577,30 @@ function drawChat(data: GlyphMetrics, width: number, height: number): void {
       Math.max(1, localBottom - Math.min(glyphTop, glyphBottom)) / lineHeight,
     ),
   );
+  const reservedLines = Math.max(
+    0,
+    Math.trunc(payload.defaultReservedLines),
+  );
+  const maximumTextLines = Math.max(
+    0,
+    Math.floor(localBottom / lineHeight) - reservedLines,
+  );
+  const glyphX =
+    initialLayout.output.x +
+    initialLayout.output.paddingX +
+    integer("shift") * glyphScale;
+  const textX = glyphX + data.advance * glyphScale;
+  const textWidth =
+    initialLayout.output.x +
+    initialLayout.output.width -
+    textX -
+    initialLayout.shadowOffset;
+  const outputLines = wrappedChatOutputLines(
+    textWidth,
+    initialLayout.messageFontSize,
+  ).slice(-maximumTextLines);
   const backgroundLines =
-    occupied + Math.max(0, Math.trunc(payload.defaultReservedLines));
+    Math.max(occupied, outputLines.length) + reservedLines;
   const layout = helpers.miniMessageChatLayout(
     width,
     height,
@@ -523,8 +618,7 @@ function drawChat(data: GlyphMetrics, width: number, height: number): void {
     selectById("mode").value,
     colorValue("text-rgba", fallbackTextColor),
   );
-  const glyphX =
-    layout.output.x + layout.output.paddingX + integer("shift") * glyphScale;
+  const effectiveTint = tint ?? fallbackTextColor;
   drawGlyph(
     data,
     glyphX + layout.shadowOffset,
@@ -535,6 +629,26 @@ function drawChat(data: GlyphMetrics, width: number, height: number): void {
     `rgba(61, 61, 61, ${tint?.a ?? 1})`,
   );
   drawGlyph(data, glyphX, glyphTop, glyphScale, undefined, tint);
+  const outputClip: helpers.CropRectangle = {
+    x: layout.output.x,
+    y: layout.output.bottom - layout.output.contentHeight,
+    width: layout.output.width,
+    height: layout.output.contentHeight,
+  };
+  for (let index = outputLines.length - 1; index >= 0; index -= 1) {
+    const line = outputLines[index];
+    if (line === undefined) continue;
+    const distanceFromBottom = outputLines.length - index;
+    drawMinecraftText(
+      line,
+      textX,
+      layout.output.bottom - distanceFromBottom * lineHeight,
+      layout.messageFontSize,
+      layout.shadowOffset,
+      effectiveTint,
+      outputClip,
+    );
+  }
   drawChatInput(layout, background);
 }
 
@@ -727,6 +841,7 @@ for (const control of queryElements("[data-sync]", HTMLInputElement)) {
 }
 for (const control of [
   ...queryElements("select", HTMLSelectElement),
+  ...queryElements("textarea", HTMLTextAreaElement),
   ...queryElements(
     "input:not([data-sync]):not([data-transient]):not(#zoom-input)",
     HTMLInputElement,
@@ -874,6 +989,7 @@ async function receivePreview(nextPayload: ImagePreviewPayload): Promise<void> {
       '32px "MinecraftUnicode"',
       Messages.web.image.preview.text0012,
     ),
+    document.fonts.load('28px "MinecraftPreview"', "Steve"),
   ]);
   if (generation !== loadGeneration) return;
   payload = nextPayload;
@@ -915,10 +1031,12 @@ async function receivePreview(nextPayload: ImagePreviewPayload): Promise<void> {
   if (fitMode) requestAnimationFrame(fitView);
   const unicodeFontLoaded =
     loaded[5].length > 0 &&
+    loaded[6].length > 0 &&
     document.fonts.check(
       '32px "MinecraftUnicode"',
       Messages.web.image.preview.text0014,
-    );
+    ) &&
+    document.fonts.check('28px "MinecraftPreview"', "Steve");
   vscode.postMessage({
     type: "rendered",
     id: nextPayload.id,
