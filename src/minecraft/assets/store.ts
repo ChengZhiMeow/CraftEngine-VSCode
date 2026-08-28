@@ -17,6 +17,7 @@ const ASSET_INDEX_SHA1 = "49da57a9512de46382d2fe4b68af047fea7a16f9";
 const BASELINE_HASH = createHash("sha256")
   .update(`${MINECRAFT_VERSION}:${CLIENT_SHA1}:${ASSET_INDEX_SHA1}`)
   .digest("hex");
+const OFFLINE_SOUND_CONCURRENCY = 64;
 
 const BASELINE = {
   clientSize: 39_193_383,
@@ -63,7 +64,14 @@ const BASELINE = {
 
 export interface MinecraftDownloadProgress {
   readonly stage:
-    "metadata" | "client" | "asset-index" | "objects" | "extract" | "sound";
+    | "metadata"
+    | "client"
+    | "asset-index"
+    | "objects"
+    | "extract"
+    | "sound"
+    | "offline-package"
+    | "offline-import";
   readonly message: string;
   readonly file?: string;
   readonly downloaded?: number;
@@ -73,6 +81,23 @@ export interface MinecraftDownloadProgress {
 export interface MinecraftDownloadOptions {
   readonly report?: (progress: MinecraftDownloadProgress) => void;
   readonly isCancellationRequested?: () => boolean;
+}
+
+export interface MinecraftOfflineSoundFile {
+  readonly id: string;
+  readonly hash: string;
+  readonly size: number;
+}
+
+interface MinecraftOfflineAssetManifest {
+  readonly format: 1;
+  readonly baselineHash: string;
+  readonly minecraftVersion: string;
+  readonly clientSha1: string;
+  readonly assetIndexSha1: string;
+  readonly soundFiles: number;
+  readonly soundBytes: number;
+  readonly createdAt: string;
 }
 
 export class MinecraftDownloadCancelled extends Error {
@@ -160,6 +185,31 @@ async function replaceFile(source: string, target: string): Promise<void> {
       await fs.rename(old, target);
     } catch {
       // 回滚失败时保留原错误, 下次启动会重新校验文件
+    }
+    throw error;
+  }
+}
+
+async function replaceDirectory(source: string, target: string): Promise<void> {
+  const old = `${target}.old`;
+  await fs.rm(old, { recursive: true, force: true });
+  try {
+    await fs.rename(target, old);
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String(error.code)
+        : "";
+    if (code !== "ENOENT") throw error;
+  }
+  try {
+    await fs.rename(source, target);
+    await fs.rm(old, { recursive: true, force: true });
+  } catch (error) {
+    try {
+      await fs.rename(old, target);
+    } catch {
+      // 回滚失败时保留原错误, 下次启动会重新校验缓存
     }
     throw error;
   }
@@ -400,7 +450,10 @@ export class VanillaAssetStore {
     }
   >();
 
-  public constructor(private readonly globalStorageUri: vscode.Uri) {}
+  public constructor(
+    private readonly globalStorageUri: vscode.Uri,
+    private readonly assetBaseUrl = `${BMCLAPI}/assets`,
+  ) {}
 
   public get cacheRoot(): string {
     return path.join(
@@ -491,7 +544,7 @@ export class VanillaAssetStore {
     if (cached) return cached;
     const target = this.soundTarget(identifier);
     await downloadChecked(
-      `${BMCLAPI}/assets/${hash.slice(0, 2)}/${hash}`,
+      `${this.assetBaseUrl}/${hash.slice(0, 2)}/${hash}`,
       target,
       hash,
       size,
@@ -503,6 +556,197 @@ export class VanillaAssetStore {
     const stat = await fs.stat(target);
     this.verifiedSounds.set(target, { hash, size, modified: stat.mtimeMs });
     return target;
+  }
+
+  public async cacheAllSounds(
+    soundFiles: readonly MinecraftOfflineSoundFile[],
+    options: MinecraftDownloadOptions = {},
+  ): Promise<void> {
+    await this.ensureExtracted(options);
+    const totalBytes = soundFiles.reduce((sum, file) => sum + file.size, 0);
+    let completed = 0;
+    let completedBytes = 0;
+    options.report?.({
+      stage: "sound",
+      message: Messages.src.minecraft.assets.store.text0023(
+        completed,
+        soundFiles.length,
+      ),
+      downloaded: completedBytes,
+      total: totalBytes,
+    });
+    await runPool(soundFiles, OFFLINE_SOUND_CONCURRENCY, async (file) => {
+      cancelled(options);
+      await this.sound(
+        file.id,
+        file.hash,
+        file.size,
+        options.isCancellationRequested
+          ? { isCancellationRequested: options.isCancellationRequested }
+          : {},
+      );
+      completed += 1;
+      completedBytes += file.size;
+      options.report?.({
+        stage: "sound",
+        message: Messages.src.minecraft.assets.store.text0023(
+          completed,
+          soundFiles.length,
+        ),
+        file: `${file.id}.ogg`,
+        downloaded: completedBytes,
+        total: totalBytes,
+      });
+    });
+  }
+
+  public async createOfflinePackage(
+    soundFiles: readonly MinecraftOfflineSoundFile[],
+    outputPath: string,
+    options: MinecraftDownloadOptions = {},
+  ): Promise<string> {
+    await this.cacheAllSounds(soundFiles, options);
+    cancelled(options);
+    options.report?.({
+      stage: "offline-package",
+      message: Messages.src.minecraft.assets.store.text0024,
+    });
+    const archive = new AdmZip();
+    archive.addLocalFolder(
+      this.cacheRoot,
+      "",
+      (filePath) => !/\.(?:old|part|tmp)$/iu.test(filePath),
+    );
+    const soundBytes = soundFiles.reduce((sum, file) => sum + file.size, 0);
+    const manifest: MinecraftOfflineAssetManifest = {
+      format: 1,
+      baselineHash: BASELINE_HASH,
+      minecraftVersion: MINECRAFT_VERSION,
+      clientSha1: CLIENT_SHA1,
+      assetIndexSha1: ASSET_INDEX_SHA1,
+      soundFiles: soundFiles.length,
+      soundBytes,
+      createdAt: new Date().toISOString(),
+    };
+    archive.addFile(
+      "offline-manifest.json",
+      Buffer.from(JSON.stringify(manifest), "utf8"),
+    );
+    await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    await archive.writeZipPromise(outputPath, { overwrite: true });
+    return outputPath;
+  }
+
+  public async importOfflinePackage(
+    archivePath: string,
+    soundFiles: readonly MinecraftOfflineSoundFile[],
+    options: MinecraftDownloadOptions = {},
+  ): Promise<string> {
+    const archive = new AdmZip(archivePath);
+    const manifestEntry = archive.getEntry("offline-manifest.json");
+    if (!manifestEntry)
+      throw new Error(Messages.src.minecraft.assets.store.text0025);
+    const manifest: unknown = JSON.parse(
+      manifestEntry.getData().toString("utf8"),
+    );
+    const soundBytes = soundFiles.reduce((sum, file) => sum + file.size, 0);
+    if (
+      !isRecord(manifest) ||
+      manifest.format !== 1 ||
+      manifest.baselineHash !== BASELINE_HASH ||
+      manifest.minecraftVersion !== MINECRAFT_VERSION ||
+      manifest.clientSha1 !== CLIENT_SHA1 ||
+      manifest.assetIndexSha1 !== ASSET_INDEX_SHA1 ||
+      manifest.soundFiles !== soundFiles.length ||
+      manifest.soundBytes !== soundBytes
+    )
+      throw new Error(Messages.src.minecraft.assets.store.text0026);
+
+    const root = this.cacheRoot;
+    const parent = path.dirname(root);
+    const temporary = path.join(
+      parent,
+      `${path.basename(root)}.offline-${process.pid}-${Date.now()}`,
+    );
+    assertInside(temporary, parent);
+    await fs.rm(temporary, { recursive: true, force: true });
+    try {
+      const entries = archive.getEntries();
+      for (const entry of entries) safeTarget(temporary, entry.entryName);
+      options.report?.({
+        stage: "offline-import",
+        message: Messages.src.minecraft.assets.store.text0027,
+      });
+      await fs.mkdir(temporary, { recursive: true });
+      await new Promise<void>((resolve, reject) =>
+        archive.extractAllToAsync(temporary, true, false, (error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        }),
+      );
+      cancelled(options);
+      if (!(await this.markerValid(temporary)))
+        throw new Error(Messages.src.minecraft.assets.store.text0028);
+      const externalAssets = await Promise.all(
+        BASELINE.externalAssets.map(async (asset) => ({
+          asset,
+          data: await fs.readFile(
+            safeTarget(temporary, `assets/${asset.path}`),
+          ),
+        })),
+      );
+      await this.extractClient(
+        path.join(temporary, "client.jar"),
+        temporary,
+        options,
+      );
+      for (const external of externalAssets)
+        await writeAtomic(
+          safeTarget(temporary, `assets/${external.asset.path}`),
+          external.data,
+        );
+      if (!(await this.markerValid(temporary)))
+        throw new Error(Messages.src.minecraft.assets.store.text0028);
+
+      let completed = 0;
+      let completedBytes = 0;
+      await runPool(soundFiles, OFFLINE_SOUND_CONCURRENCY, async (file) => {
+        cancelled(options);
+        const target = this.soundTargetAt(temporary, file.id);
+        const stat = await fs.stat(target).catch(() => undefined);
+        if (
+          !stat ||
+          stat.size !== file.size ||
+          (await fileSha1(target)) !== file.hash
+        )
+          throw new Error(
+            Messages.src.minecraft.assets.store.text0029(file.id),
+          );
+        completed += 1;
+        completedBytes += file.size;
+        options.report?.({
+          stage: "offline-import",
+          message: Messages.src.minecraft.assets.store.text0030(
+            completed,
+            soundFiles.length,
+          ),
+          file: `${file.id}.ogg`,
+          downloaded: completedBytes,
+          total: soundBytes,
+        });
+      });
+      cancelled(options);
+      await replaceDirectory(temporary, root);
+      this.extractedRoot = root;
+      this.extracting = undefined;
+      this.verifiedSounds.clear();
+      return root;
+    } finally {
+      await fs.rm(temporary, { recursive: true, force: true });
+    }
   }
 
   public async redownload(
@@ -518,6 +762,10 @@ export class VanillaAssetStore {
   }
 
   private soundTarget(identifier: string): string {
+    return this.soundTargetAt(this.cacheRoot, identifier);
+  }
+
+  private soundTargetAt(root: string, identifier: string): string {
     const separator = identifier.indexOf(":");
     const namespace =
       separator < 0 ? "minecraft" : identifier.slice(0, separator);
@@ -525,7 +773,7 @@ export class VanillaAssetStore {
       separator < 0 ? identifier : identifier.slice(separator + 1)
     ).replace(/\.ogg$/iu, "");
     return safeTarget(
-      this.cacheRoot,
+      root,
       `assets/${namespace}/sounds/${value}.ogg`,
     );
   }

@@ -7,6 +7,7 @@ export default tseslint.config(
       "target/**",
       "node_modules/**",
       "*.mjs",
+      "scripts/**/*.mjs",
       "src/render/**/*.d.ts",
     ],
   },

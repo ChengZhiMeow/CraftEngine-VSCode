@@ -35,6 +35,7 @@ import { registerPreviewCommands } from "./commands/preview.js";
 import { registerResourcesRootCommand } from "./commands/resourcesRoot.js";
 import { registerMaterialCommand } from "./commands/material.js";
 import { registerIndexCommands } from "./commands/index.js";
+import { registerOfflineAssetsCommand } from "./commands/offlineAssets.js";
 import { isRecord } from "./util/records.js";
 
 import { Messages } from "./messages.js";
@@ -46,6 +47,7 @@ export async function activate(
   );
   const vanillaCatalog = minecraft.vanilla;
   const vanillaSounds = minecraft.sounds;
+  const vanillaSoundFiles = [...vanillaSounds.files.values()];
   const vanillaAssets = new VanillaAssetStore(context.globalStorageUri);
   const materialIcons = new MaterialIconService(
     vanillaAssets,
@@ -115,8 +117,15 @@ export async function activate(
               error instanceof Error ? error.message : String(error),
             ),
             Messages.src.extension.text0004,
+            Messages.src.commands.offlineAssets.text0001,
           );
-          if (choice)
+          if (choice === Messages.src.commands.offlineAssets.text0001) {
+            void vscode.commands.executeCommand(
+              "craftengineYaml.importMinecraftAssets",
+            );
+            return undefined;
+          }
+          if (choice === Messages.src.extension.text0004)
             void vscode.commands.executeCommand(
               "craftengineYaml.redownloadMinecraftAssets",
             );
@@ -317,6 +326,7 @@ export async function activate(
     }),
     registerResourcesRootCommand(manager),
     registerMaterialCommand(vanillaCatalog, materialIcons),
+    registerOfflineAssetsCommand(vanillaAssets, vanillaSoundFiles),
     ...registerIndexCommands(manager, statusBar),
     vscode.commands.registerCommand(
       "craftengineYaml.redownloadMinecraftAssets",

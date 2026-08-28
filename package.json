@@ -2,7 +2,7 @@
   "name": "craftengine-yaml",
   "displayName": "CraftEngine",
   "description": "橙汁喵开发的 CraftEngine 配置预览引擎",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "author": "ChengZhiMeow",
   "publisher": "ChengZhiMeow",
   "license": "MIT",
@@ -35,6 +35,7 @@
     "onCommand:craftengineYaml.previewBlockState",
     "onCommand:craftengineYaml.previewSound",
     "onCommand:craftengineYaml.redownloadMinecraftAssets",
+    "onCommand:craftengineYaml.importMinecraftAssets",
     "onCommand:craftengineYaml.selectMaterial",
     "onCommand:craftengineYaml.bindResourcesRoot",
     "onCommand:craftengineYaml.showMenu",
@@ -82,6 +83,11 @@
       {
         "command": "craftengineYaml.redownloadMinecraftAssets",
         "title": "重新下载 Minecraft 26.2 资源",
+        "category": "CraftEngine"
+      },
+      {
+        "command": "craftengineYaml.importMinecraftAssets",
+        "title": "使用 Minecraft 26.2 离线素材包",
         "category": "CraftEngine"
       },
       {
@@ -241,6 +247,7 @@
   "scripts": {
     "compile": "node ./esbuild.mjs",
     "watch": "node ./esbuild.mjs --watch",
+    "offline-assets": "node ./scripts/build-offline-assets.mjs",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.render.json --noEmit",
     "lint": "eslint .",
     "check": "npm run typecheck && npm run lint && npm run compile"

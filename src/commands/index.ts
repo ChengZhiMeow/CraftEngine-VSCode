@@ -30,6 +30,11 @@ export function registerIndexCommands(
             detail: Messages.src.commands.index.text0006,
             command: "craftengineYaml.redownloadMinecraftAssets",
           },
+          {
+            label: Messages.src.commands.index.text0012,
+            detail: Messages.src.commands.index.text0013,
+            command: "craftengineYaml.importMinecraftAssets",
+          },
         ] satisfies readonly CraftEngineMenuPick[],
         {
           title: Messages.common.brand,

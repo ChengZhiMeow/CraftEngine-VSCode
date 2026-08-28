@@ -5,8 +5,12 @@ node_modules/**
 package-lock.json
 src/**
 target/*.vsix
+target/*.zip
+target/*offline-installation.md
+target/offline-*/**
 **/*.map
 tsconfig.json
 tsconfig.render.json
 eslint.config.mjs
 esbuild.mjs
+scripts/**

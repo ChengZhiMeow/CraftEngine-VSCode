@@ -52,6 +52,17 @@ export const Messages = {
         ) =>
           `CraftEngine: 全量索引已重建（${items} 物品、${blocks} 方块、${furniture} 家具、${lootTables} 战利品表）`,
         text0011: "CraftEngine 配置索引与资源工具",
+        text0012: "$(file-zip) 使用 Minecraft 离线素材包",
+        text0013: "从本地 ZIP 加载 Minecraft 26.2 全部资源和原版音频",
+      },
+      offlineAssets: {
+        text0001: "使用离线素材包",
+        text0002: "CraftEngine Minecraft 离线素材包",
+        text0003: "选择 Minecraft 26.2 离线素材包",
+        text0004: "CraftEngine YAML: 正在加载 Minecraft 离线素材包",
+        text0005: "Minecraft 离线素材包已校验并加载",
+        text0006: "重新加载窗口",
+        text0007: (detail: string) => `加载 Minecraft 离线素材包失败: ${detail}`,
       },
       material: {
         text0001: "请从 material 上方的“选择原版物品”按钮打开原版物品搜索",
@@ -4403,6 +4414,16 @@ export const Messages = {
           text0021: "正在安全解压 Minecraft 客户端资源",
           text0022: (completed: number, total: number) =>
             `正在解压客户端资源 ${completed}/${total}`,
+          text0023: (completed: number, total: number) =>
+            `正在准备全部原版音频 ${completed}/${total}`,
+          text0024: "正在封装 Minecraft 离线素材包",
+          text0025: "所选文件不是 CraftEngine Minecraft 离线素材包",
+          text0026: "离线素材包版本或资源基线与当前扩展不匹配",
+          text0027: "正在解压 Minecraft 离线素材包",
+          text0028: "离线素材包中的 Minecraft 基础资源校验失败",
+          text0029: (id: string) => `离线素材包中的原版音频无效: ${id}.ogg`,
+          text0030: (completed: number, total: number) =>
+            `正在校验全部原版音频 ${completed}/${total}`,
         },
       },
       block: {
