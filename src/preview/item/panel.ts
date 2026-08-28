@@ -13,6 +13,7 @@ import {
 import { editorPreviewFooter } from "../shared/footer.js";
 import { nonce, previewStatusPage } from "../shared/html.js";
 import { PLAYER_SKIN_DATA_URL } from "../shared/playerSkin.js";
+import { hasPreviewSource } from "../shared/source.js";
 import { Messages } from "../../messages.js";
 import type {
   ItemPreviewDataBuilder,
@@ -114,6 +115,13 @@ export class CraftEngineItemPreviewPanel
           rendered: false,
           ...(current?.selected ? { itemId: current.selected.id } : {}),
         };
+  }
+
+  public hasSource(source: string): boolean {
+    return hasPreviewSource(
+      [...this.instances].map((instance) => instance.selected?.source),
+      source,
+    );
   }
 
   public async show(

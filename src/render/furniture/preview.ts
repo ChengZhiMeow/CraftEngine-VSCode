@@ -12,6 +12,7 @@ import {
   furnitureElementPreviewRotationY,
   orientFurniturePreviewVariant,
 } from "./rotation.js";
+import { FurnitureSeatSelection } from "./state.js";
 import {
   decodeFurnitureInboundMessage,
   type FurnitureOutboundMessage,
@@ -372,6 +373,7 @@ const pendingIcons = new Set<string>();
 const pendingModels = new Set<string>();
 const textureLoader = new THREE.TextureLoader();
 const saved: FurniturePreviewState = vscode.getState() ?? {};
+const seatSelection = new FurnitureSeatSelection(saved.seat);
 
 function persistState(update: Partial<FurniturePreviewState> = {}): void {
   Object.assign(saved, update);
@@ -1118,7 +1120,6 @@ function applyFilters(): void {
   });
   persistState({
     ...(selectedVariant ? { variant: selectedVariant.name } : {}),
-    seat: element("seat", HTMLSelectElement).value,
     yaw: Number(element("yaw", HTMLInputElement).value),
     playerYaw: saved.playerYaw || 0,
   });
@@ -1253,11 +1254,9 @@ async function rebuildVariant(name?: string, fitAfter = true): Promise<void> {
       ),
     ),
   );
-  if (
-    saved.seat &&
-    activeVariant.seats.some((entry) => entry.id === saved.seat)
-  )
-    seatSelect.value = saved.seat;
+  seatSelect.value = seatSelection.restore(
+    activeVariant.seats.map((entry) => entry.id),
+  );
   configurePlayerYaw();
   rebuildFilters();
   applyFilters();
@@ -1300,7 +1299,6 @@ function updateFurnitureYaw(value: number): void {
   }
   persistState({
     ...(selectedVariant ? { variant: selectedVariant.name } : {}),
-    seat: element("seat", HTMLSelectElement).value,
   });
 }
 
@@ -1366,13 +1364,19 @@ element("yaw-number", HTMLInputElement).addEventListener("input", (event) => {
   updateFurnitureYaw(value);
 });
 element("seat", HTMLSelectElement).addEventListener("change", () => {
+  const seat = element("seat", HTMLSelectElement).value;
+  seatSelection.select(seat);
+  persistState({
+    ...(selectedVariant ? { variant: selectedVariant.name } : {}),
+    seat,
+  });
   configurePlayerYaw();
   void renderPlayer();
   applyFilters();
   vscode.postMessage({
     type: "state",
     ...(selectedVariant ? { variant: selectedVariant.name } : {}),
-    seat: element("seat", HTMLSelectElement).value,
+    seat,
   });
 });
 element("player-yaw", HTMLInputElement).addEventListener("input", (event) => {

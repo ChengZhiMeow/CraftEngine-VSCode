@@ -19,6 +19,7 @@ import { isRecord } from "../../util/records.js";
 import type { CraftEngineWorkspaceIndex } from "../../workspace/index.js";
 import { editorPreviewFooter } from "../shared/footer.js";
 import { escapeHtml, nonce } from "../shared/html.js";
+import { hasPreviewSource } from "../shared/source.js";
 import {
   MinecraftDownloadCancelled,
   type MinecraftDownloadProgress,
@@ -71,6 +72,9 @@ interface SoundTarget {
   readonly volume: unknown;
   readonly pitch: unknown;
   readonly sourceLabel: string;
+  readonly source?: string;
+  readonly sourceOffset?: number;
+  readonly sourcePath?: string;
 }
 
 interface SoundTargetContext {
@@ -287,6 +291,33 @@ export class CraftEngineSoundPreviewPanel implements vscode.Disposable {
     };
   }
 
+  public hasSource(source: string): boolean {
+    if (!this.panel) return false;
+    return hasPreviewSource(
+      this.targets.map((target) => target.source),
+      source,
+    );
+  }
+
+  public async refresh(source: string): Promise<void> {
+    if (!this.panel || !this.hasSource(source)) return;
+    const previous = this.targets[this.selectedTargetIndex] ?? this.target;
+    if (!previous) return;
+    const context = this.refreshTargetContext(previous);
+    if (!context) return;
+
+    this.targets = context.targets;
+    this.selectedTargetIndex = context.selectedIndex;
+    const target = context.targets[context.selectedIndex];
+    if (!target) return;
+    this.resetTarget(target);
+    this.panel.title = Messages.src.preview.sound.panel.text0032(
+      target.eventId,
+    );
+    this.panel.webview.html = this.html(this.panel.webview, target);
+    await this.prefetchVanillaFiles(target);
+  }
+
   public async play(): Promise<void> {
     await this.receive({ type: "play" });
   }
@@ -304,20 +335,8 @@ export class CraftEngineSoundPreviewPanel implements vscode.Disposable {
   ): SoundTargetContext | undefined {
     const { uri, offset, eventId } = argument;
     if (uri !== undefined && offset !== undefined) {
-      const reference = this.manager.index.soundDataReferences.find(
-        (candidate) =>
-          candidate.source.uri === uri &&
-          offset >= candidate.idRange.start &&
-          offset <= candidate.idRange.end,
-      );
-      if (reference) return this.contextFromReference(reference);
-      const definition = this.manager.index.soundEvents.find(
-        (candidate) =>
-          candidate.source.uri === uri &&
-          candidate.source.idRange.start === offset,
-      );
-      if (definition)
-        return this.singleton(this.targetFromDefinition(definition));
+      const direct = this.targetContextAt(uri, offset);
+      if (direct) return direct;
     }
     const editor = vscode.window.activeTextEditor;
     if (editor) {
@@ -360,6 +379,52 @@ export class CraftEngineSoundPreviewPanel implements vscode.Disposable {
       pitch: 1,
       sourceLabel: this.soundEventSourceLabel(identifier, root),
     });
+  }
+
+  private targetContextAt(
+    uri: string,
+    offset: number,
+  ): SoundTargetContext | undefined {
+    const reference = this.manager.index.soundDataReferences.find(
+      (candidate) =>
+        candidate.source.uri === uri &&
+        offset >= candidate.idRange.start &&
+        offset <= candidate.idRange.end,
+    );
+    if (reference) return this.contextFromReference(reference);
+    const definition = this.manager.index.soundEvents.find(
+      (candidate) =>
+        candidate.source.uri === uri &&
+        candidate.source.idRange.start === offset,
+    );
+    if (!definition) return undefined;
+    return this.singleton(this.targetFromDefinition(definition));
+  }
+
+  private refreshTargetContext(
+    target: SoundTarget,
+  ): SoundTargetContext | undefined {
+    const source = target.source;
+    if (!source) return undefined;
+    if (target.sourceOffset !== undefined) {
+      const direct = this.targetContextAt(source, target.sourceOffset);
+      if (direct) return direct;
+    }
+    if (target.sourcePath !== undefined) {
+      const reference = this.manager.index.soundDataReferences.find(
+        (candidate) =>
+          candidate.source.uri === source &&
+          candidate.eventId === target.eventId &&
+          candidate.path === target.sourcePath,
+      );
+      if (reference) return this.contextFromReference(reference);
+    }
+    const definition = this.manager.index.soundEvents.find(
+      (candidate) =>
+        candidate.source.uri === source && candidate.id === target.eventId,
+    );
+    if (!definition) return undefined;
+    return this.singleton(this.targetFromDefinition(definition));
   }
 
   private singleton(target: SoundTarget): SoundTargetContext {
@@ -466,6 +531,9 @@ export class CraftEngineSoundPreviewPanel implements vscode.Disposable {
       volume: reference.volume,
       pitch: reference.pitch,
       sourceLabel: `${reference.source.pack.name} · SoundData · ${this.soundEventSourceLabel(reference.eventId, resourcesRoot)}`,
+      source: reference.source.uri,
+      sourceOffset: reference.idRange.start,
+      sourcePath: reference.path,
     };
   }
 
@@ -478,6 +546,8 @@ export class CraftEngineSoundPreviewPanel implements vscode.Disposable {
       volume: 1,
       pitch: 1,
       sourceLabel: `${this.soundEventSourceLabel(definition.id, resourcesRoot)} · ${definition.origin === "resourcepack-json" ? Messages.common.soundsJson : Messages.common.diagnosticSource}`,
+      source: definition.source.uri,
+      sourceOffset: definition.source.idRange.start,
     };
   }
 

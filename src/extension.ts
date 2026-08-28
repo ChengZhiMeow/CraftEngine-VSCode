@@ -223,6 +223,24 @@ export async function activate(
     void itemPreview.refresh(index);
     void furniturePreview.refresh(index);
   });
+  const previewSaveListener = vscode.workspace.onDidSaveTextDocument(
+    (document) => {
+      const source = document.uri.toString();
+      if (
+        !preview.hasSource(source) &&
+        !itemPreview.hasSource(source) &&
+        !furniturePreview.hasSource(source) &&
+        !soundPreview.hasSource(source)
+      )
+        return;
+      void manager
+        .rebuild()
+        .then(() => soundPreview.refresh(source))
+        .catch((error: unknown) =>
+          console.error(Messages.src.workspace.index.text0001, error),
+        );
+    },
+  );
 
   context.subscriptions.push(
     diagnostics,
@@ -238,6 +256,7 @@ export async function activate(
     textFeatures,
     textDisplay,
     indexListener,
+    previewSaveListener,
     vscode.window.registerWebviewPanelSerializer(
       CraftEnginePreviewPanel.viewType,
       preview,

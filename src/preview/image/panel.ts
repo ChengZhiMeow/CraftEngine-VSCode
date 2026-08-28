@@ -8,6 +8,7 @@ import type { WorkspaceIndex } from "../../workspace/model.js";
 import { readPngDataUrl } from "../shared/assets.js";
 import { editorPreviewFooter } from "../shared/footer.js";
 import { nonce, previewStatusPage } from "../shared/html.js";
+import { hasPreviewSource } from "../shared/source.js";
 
 import { Messages } from "../../messages.js";
 interface PreviewPayload {
@@ -126,6 +127,11 @@ export class CraftEnginePreviewPanel
           unicodeFontLoaded: false,
           ...(this.selected ? { imageId: this.selected.id } : {}),
         };
+  }
+
+  public hasSource(source: string): boolean {
+    if (!this.panel) return false;
+    return hasPreviewSource([this.selected?.source], source);
   }
 
   public async show(

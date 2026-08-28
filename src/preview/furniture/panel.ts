@@ -17,6 +17,7 @@ import { editorPreviewFooter } from "../shared/footer.js";
 import { Messages } from "../../messages.js";
 import { nonce, previewStatusPage } from "../shared/html.js";
 import { PLAYER_SKIN_DATA_URL } from "../shared/playerSkin.js";
+import { hasPreviewSource } from "../shared/source.js";
 
 interface SelectedFurniture {
   readonly id: string;
@@ -133,6 +134,13 @@ export class CraftEngineFurniturePreviewPanel
         : {}),
       ...(current?.selectedSeat ? { seat: current.selectedSeat } : {}),
     };
+  }
+
+  public hasSource(source: string): boolean {
+    return hasPreviewSource(
+      [...this.instances].map((instance) => instance.selected?.source),
+      source,
+    );
   }
 
   public async show(furniture: FurnitureDefinition): Promise<void> {
