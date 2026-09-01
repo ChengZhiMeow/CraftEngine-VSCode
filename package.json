@@ -6,6 +6,10 @@
   "author": "ChengZhiMeow",
   "publisher": "ChengZhiMeow",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ChengZhiMeow/CraftEngine-VSCode.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
