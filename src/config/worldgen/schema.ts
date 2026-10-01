@@ -256,18 +256,88 @@ function nestedPath(
     .map((value) => value.replaceAll("-", "_"));
 }
 
-export const CONFIGURED_FEATURE_TYPES = [
-  "craftengine:simple_block",
-  "minecraft:simple_block",
+// CE 只注入 craftengine:simple_block, 其余 configured_feature 的 type 都走
+// Minecraft 的 worldgen/feature 注册表, 所以这里列全该注册表的类型。
+// 依据: server-26.2 反编译源码 net/minecraft/world/level/levelgen/feature/Feature.java
+// 的 register(...) 调用, 与 resources/minecraft-26.2.json 里的
+// minecraft:worldgen/feature 注册表 (63 项) 完全一致。
+const VANILLA_CONFIGURED_FEATURE_TYPES = [
+  "minecraft:bamboo",
+  "minecraft:basalt_columns",
+  "minecraft:basalt_pillar",
+  "minecraft:block_blob",
   "minecraft:block_column",
+  "minecraft:block_pile",
+  "minecraft:blue_ice",
+  "minecraft:bonus_chest",
+  "minecraft:chorus_plant",
+  "minecraft:coral_claw",
+  "minecraft:coral_mushroom",
+  "minecraft:coral_tree",
+  "minecraft:delta_feature",
+  "minecraft:desert_well",
+  "minecraft:disk",
+  "minecraft:end_gateway",
+  "minecraft:end_island",
+  "minecraft:end_platform",
+  "minecraft:end_spike",
+  "minecraft:fallen_tree",
+  "minecraft:fill_layer",
+  "minecraft:fossil",
+  "minecraft:freeze_top_layer",
+  "minecraft:geode",
+  "minecraft:glowstone_blob",
+  "minecraft:huge_brown_mushroom",
+  "minecraft:huge_fungus",
+  "minecraft:huge_red_mushroom",
+  "minecraft:iceberg",
+  "minecraft:kelp",
+  "minecraft:lake",
+  "minecraft:large_dripstone",
+  "minecraft:monster_room",
+  "minecraft:multiface_growth",
+  "minecraft:nether_forest_vegetation",
+  "minecraft:netherrack_replace_blobs",
+  "minecraft:no_op",
   "minecraft:ore",
-  "minecraft:random_patch",
+  "minecraft:random_boolean_selector",
+  "minecraft:random_selector",
+  "minecraft:replace_single_block",
+  "minecraft:root_system",
+  "minecraft:scattered_ore",
+  "minecraft:sculk_patch",
+  "minecraft:sea_pickle",
+  "minecraft:seagrass",
+  "minecraft:sequence",
+  "minecraft:simple_block",
+  "minecraft:simple_random_selector",
+  "minecraft:speleothem",
+  "minecraft:speleothem_cluster",
+  "minecraft:spike",
+  "minecraft:spring_feature",
+  "minecraft:template",
   "minecraft:tree",
+  "minecraft:twisting_vines",
+  "minecraft:underwater_magma",
+  "minecraft:vegetation_patch",
+  "minecraft:vines",
+  "minecraft:void_start_platform",
+  "minecraft:waterlogged_vegetation_patch",
+  "minecraft:weeping_vines",
+  "minecraft:weighted_random_selector",
 ] as const;
 
-export const CONFIGURED_FEATURE_TYPE_DETAILS: Readonly<
-  Record<(typeof CONFIGURED_FEATURE_TYPES)[number], string>
-> = {
+// 26.2 注册表里已经没有 random_patch (CE 只在 subpacks/fallback 里用),
+// 但旧配置和旧版本仍会写, 保留以免让校验变严。
+const LEGACY_CONFIGURED_FEATURE_TYPES = ["minecraft:random_patch"] as const;
+
+export const CONFIGURED_FEATURE_TYPES = [
+  "craftengine:simple_block",
+  ...VANILLA_CONFIGURED_FEATURE_TYPES,
+  ...LEGACY_CONFIGURED_FEATURE_TYPES,
+] as const;
+
+export const CONFIGURED_FEATURE_TYPE_DETAILS: Readonly<Record<string, string>> = {
   "craftengine:simple_block": Messages.src.config.worldgen.schema.text0006,
   "minecraft:simple_block": Messages.src.config.worldgen.schema.text0007,
   "minecraft:block_column": Messages.src.config.worldgen.schema.text0008,
@@ -282,8 +352,12 @@ export const BLOCK_STATE_PROVIDER_TYPES = [
   "craftengine:rotated_block_provider",
   "craftengine:randomized_int_state_provider",
   "minecraft:simple_state_provider",
+  // CraftEngine 26.3 起官方默认配置改用改短的类型名 (blocks/tree.yml: minecraft:simple),
+  // 与长名共用同一张字段表
+  "minecraft:simple",
   "minecraft:weighted_state_provider",
   "minecraft:rule_based_state_provider",
+  "minecraft:rule_based",
 ] as const;
 
 export const BLOCK_STATE_PROVIDER_TYPE_DETAILS: Readonly<
@@ -299,10 +373,12 @@ export const BLOCK_STATE_PROVIDER_TYPE_DETAILS: Readonly<
     Messages.src.config.worldgen.schema.text0015,
   "minecraft:simple_state_provider":
     Messages.src.config.worldgen.schema.text0016,
+  "minecraft:simple": Messages.src.config.worldgen.schema.text0016,
   "minecraft:weighted_state_provider":
     Messages.src.config.worldgen.schema.text0017,
   "minecraft:rule_based_state_provider":
     Messages.src.config.worldgen.schema.text0018,
+  "minecraft:rule_based": Messages.src.config.worldgen.schema.text0018,
 };
 
 export const BLOCK_PREDICATE_TYPES = [
@@ -398,8 +474,7 @@ const CONFIGURED_TYPE_FIELD = field(
     registry: "minecraft:worldgen/feature",
     values: CONFIGURED_FEATURE_TYPES,
     valueDetails: CONFIGURED_FEATURE_TYPE_DETAILS,
-    snippet:
-      "type: ${1|craftengine:simple_block,minecraft:simple_block,minecraft:block_column,minecraft:ore,minecraft:random_patch,minecraft:tree|}",
+    snippet: `type: \${1|${CONFIGURED_FEATURE_TYPES.join(",")}|}`,
   },
 );
 
@@ -455,7 +530,7 @@ export const CONFIGURED_FEATURE_ROOT_FIELDS: readonly SchemaField[] = [
   bool("enable", Messages.src.config.worldgen.schema.text0045),
   bool("debug", Messages.src.config.worldgen.schema.text0046),
   CONFIGURED_TYPE_FIELD,
-  mapping("config", Messages.src.config.worldgen.schema.text0047, true),
+  mapping("config", Messages.src.config.worldgen.schema.text0047),
 ];
 
 const FILTER_BIOME_FIELD = field(
@@ -522,11 +597,15 @@ export const PLACED_FEATURE_ROOT_FIELDS: readonly SchemaField[] = [
 
 export const BLOCK_STATE_FIELDS: readonly SchemaField[] = [
   field("Name", Messages.src.config.worldgen.schema.text0056, {
+    aliases: ["id"],
     required: true,
     valueProvider: "block-id",
     registry: WORLDGEN_BLOCK_REGISTRY,
   }),
-  mapping("Properties", Messages.src.config.worldgen.schema.text0057),
+  field("Properties", Messages.src.config.worldgen.schema.text0057, {
+    aliases: ["properties"],
+    snippet: "Properties:\n  ${0}",
+  }),
 ];
 
 const SIMPLE_BLOCK_CONFIG_FIELDS: readonly SchemaField[] = [
@@ -608,12 +687,21 @@ const TREE_CONFIG_FIELDS: readonly SchemaField[] = [
   ),
   mapping("foliage_placer", Messages.src.config.worldgen.schema.text0086, true),
   mapping("root_placer", Messages.src.config.worldgen.schema.text0087),
-  mapping("dirt_provider", Messages.src.config.worldgen.schema.text0088, true),
   mapping("minimum_size", Messages.src.config.worldgen.schema.text0089, true),
   list("decorators", Messages.src.config.worldgen.schema.text0090, true),
   bool("ignore_vines", Messages.src.config.worldgen.schema.text0091),
-  bool("force_dirt", Messages.src.config.worldgen.schema.text0092),
-  mapping("below_trunk_provider", Messages.src.config.worldgen.schema.text0093),
+  // Minecraft 26.2 的 TreeConfiguration.CODEC: below_trunk_provider 是 fieldOf 必填,
+  // 没有 dirt_provider / force_dirt 这两个旧版字段
+  mapping("below_trunk_provider", Messages.src.config.worldgen.schema.text0093, true),
+];
+
+const MINECRAFT_SIMPLE_STATE_PROVIDER_FIELDS: readonly SchemaField[] = [
+  mapping("state", Messages.src.config.worldgen.schema.text0100, true),
+];
+
+  // 这里只确认 rules 可以使用, 不要添加没有确认过的备用字段
+const MINECRAFT_RULE_BASED_STATE_PROVIDER_FIELDS: readonly SchemaField[] = [
+  list("rules", Messages.src.config.worldgen.schema.text0102, true),
 ];
 
 const PROVIDER_FIELDS = new Map<string, readonly SchemaField[]>([
@@ -663,8 +751,10 @@ const PROVIDER_FIELDS = new Map<string, readonly SchemaField[]>([
   ],
   [
     "minecraft:simple_state_provider",
-    [mapping("state", Messages.src.config.worldgen.schema.text0100, true)],
+    MINECRAFT_SIMPLE_STATE_PROVIDER_FIELDS,
   ],
+  // CraftEngine 26.3 起官方默认配置改用改短的类型名, 字段表与长名完全一致
+  ["minecraft:simple", MINECRAFT_SIMPLE_STATE_PROVIDER_FIELDS],
   [
     "minecraft:weighted_state_provider",
     [
@@ -673,11 +763,11 @@ const PROVIDER_FIELDS = new Map<string, readonly SchemaField[]>([
       }),
     ],
   ],
-  // 这里只确认 rules 可以使用, 不要添加没有确认过的备用字段
   [
     "minecraft:rule_based_state_provider",
-    [list("rules", Messages.src.config.worldgen.schema.text0102, true)],
+    MINECRAFT_RULE_BASED_STATE_PROVIDER_FIELDS,
   ],
+  ["minecraft:rule_based", MINECRAFT_RULE_BASED_STATE_PROVIDER_FIELDS],
 ]);
 
 export const WEIGHTED_STATE_ENTRY_FIELDS: readonly SchemaField[] = [
@@ -1152,18 +1242,21 @@ function configuredNestedSchema(
   context: WorldgenSchemaContext,
   nested: readonly string[],
 ): WorldgenContextSchema {
-  if (nested.length === 0)
+  if (nested.length === 0) {
+    const inline = configuredFeatureConfigSchema(context.featureType);
     return node(
-      CONFIGURED_FEATURE_ROOT_FIELDS,
-      "closed",
+      merged(CONFIGURED_FEATURE_ROOT_FIELDS, inline.fields),
+      inline.additionalFields,
       Messages.src.config.worldgen.schema.text0187,
     );
+  }
   const tail = nested.at(-1);
   const previous = nested.at(-2);
 
   if (tail === "config")
     return configuredFeatureConfigSchema(context.featureType);
-  if (tail === "Properties") return blockStatePropertiesSchema(context);
+  if (tail === "Properties" || tail === "properties")
+    return blockStatePropertiesSchema(context);
   if (tail === "state")
     return node(
       BLOCK_STATE_FIELDS,
@@ -1286,7 +1379,6 @@ function configuredNestedSchema(
       "provider",
       "trunk_provider",
       "foliage_provider",
-      "dirt_provider",
       "below_trunk_provider",
       "source",
       "then",
@@ -1418,7 +1510,8 @@ function placedNestedSchema(
       "minecraft-runtime-codec",
       Messages.src.config.worldgen.schema.text0201,
     );
-  if (tail === "Properties") return blockStatePropertiesSchema(context);
+  if (tail === "Properties" || tail === "properties")
+    return blockStatePropertiesSchema(context);
   if (tail === "count" || tail === "xz_spread" || tail === "y_spread")
     return intProviderSchema(context.siblingValues.get("type"));
   if (tail === "distribution")

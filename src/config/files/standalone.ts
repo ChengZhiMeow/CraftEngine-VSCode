@@ -1,8 +1,26 @@
 import type { SchemaContext, SchemaField } from "../schema/types.js";
 
 import { Messages } from "../../messages.js";
-export const COMMANDS_CONFIG_VERSION = "84";
-export const TRANSLATION_LANG_VERSION = 65;
+export const COMMANDS_CONFIG_VERSION = "114";
+export const TRANSLATION_LANG_VERSION = 83;
+  // CraftEngine 只把"版本不等于当前"的文件拿去自动升级(Config.java:329-331),
+  // 旧版本号的文件本身仍然可用, 所以校验放行扩展支持过的整段版本区间
+export const LEGACY_CONFIG_VERSION = "82";
+export const LEGACY_LANG_VERSION = 62;
+
+function versionRange(from: number, to: number): readonly string[] {
+  const values: string[] = [];
+  for (let version = from; version <= to; version += 1)
+    values.push(String(version));
+  return values;
+}
+
+export const SUPPORTED_CONFIG_VERSIONS: ReadonlySet<string> = new Set(
+  versionRange(Number(LEGACY_CONFIG_VERSION), Number(COMMANDS_CONFIG_VERSION)),
+);
+export const SUPPORTED_LANG_VERSIONS: ReadonlySet<string> = new Set(
+  versionRange(LEGACY_LANG_VERSION, TRANSLATION_LANG_VERSION),
+);
 export const TRANSLATION_LIST_SEPARATOR = "<reset><newline>";
 
 export type StandaloneFileKind = "commands" | "pack" | "translation";
@@ -46,6 +64,7 @@ interface SchemaFieldOptions {
   readonly valueProvider?: SchemaField["valueProvider"];
   readonly values?: readonly string[];
   readonly required?: boolean;
+  readonly aliases?: readonly string[];
 }
 
 function field(
@@ -56,7 +75,7 @@ function field(
   return {
     label,
     semantic: label.replaceAll("-", "_").replace(/#.*$/u, ""),
-    aliases: [],
+    aliases: options.aliases ?? [],
     detail,
     snippet: options.snippet ?? `${label}: \${0}`,
     ...(options.valueProvider === undefined
@@ -75,10 +94,10 @@ export const COMMAND_FEATURES: readonly CommandFeatureDefinition[] = [
     defaultUsage: ["/craftengine reload", "/ce reload"],
   },
   {
-    id: "upload",
+    id: "pack_workflow",
     defaultEnabled: true,
-    defaultPermission: "ce.command.admin.upload",
-    defaultUsage: ["/craftengine upload", "/ce upload"],
+    defaultPermission: "ce.command.admin.pack_workflow",
+    defaultUsage: ["/craftengine workflow", "/ce workflow"],
   },
   {
     id: "send_resource_pack",
@@ -115,6 +134,36 @@ export const COMMAND_FEATURES: readonly CommandFeatureDefinition[] = [
     defaultEnabled: true,
     defaultPermission: "ce.command.admin.item_browser",
     defaultUsage: ["/craftengine item browser", "/ce item browser"],
+  },
+  {
+    id: "pack_preference_admin",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.pack_preference",
+    defaultUsage: [
+      "/craftengine feature pack-preference",
+      "/ce feature pack-preference",
+    ],
+  },
+  {
+    id: "pack_preset_admin",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.pack_preset",
+    defaultUsage: [
+      "/craftengine feature pack-preset",
+      "/ce feature pack-preset",
+    ],
+  },
+  {
+    id: "pack_preference_player",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.player.pack_preference",
+    defaultUsage: ["/pack"],
+  },
+  {
+    id: "pack_preset_player",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.player.pack_preset",
+    defaultUsage: ["/pack preset"],
   },
   {
     id: "search_usage_player",
@@ -195,16 +244,28 @@ export const COMMAND_FEATURES: readonly CommandFeatureDefinition[] = [
     ],
   },
   {
+    id: "search_resource",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.resource",
+    defaultUsage: [
+      "/craftengine resource search",
+      "/ce resource search",
+    ],
+  },
+  {
     id: "set_locale",
     defaultEnabled: true,
     defaultPermission: "ce.command.admin.set_locale",
-    defaultUsage: ["/ce feature locale set"],
+    defaultUsage: ["/craftengine feature locale set", "/ce feature locale set"],
   },
   {
     id: "unset_locale",
     defaultEnabled: true,
     defaultPermission: "ce.command.admin.unset_locale",
-    defaultUsage: ["/ce feature locale unset"],
+    defaultUsage: [
+      "/craftengine feature locale unset",
+      "/ce feature locale unset",
+    ],
   },
   {
     id: "clean_cache",
@@ -217,48 +278,72 @@ export const COMMAND_FEATURES: readonly CommandFeatureDefinition[] = [
     defaultEnabled: true,
     defaultPermission:
       "ce.command.admin.set_display_entity_view_distance_scale",
-    defaultUsage: ["/ce feature display-entity-view-distance-scale set"],
+    defaultUsage: [
+      "/craftengine feature display-entity-view-distance-scale set",
+      "/ce feature display-entity-view-distance-scale set",
+    ],
   },
   {
     id: "set_entity_culling_distance_scale",
     defaultEnabled: true,
     defaultPermission: "ce.command.admin.set_entity_culling_distance_scale",
-    defaultUsage: ["/ce feature entity-culling-distance-scale set"],
+    defaultUsage: [
+      "/craftengine feature entity-culling-distance-scale set",
+      "/ce feature entity-culling-distance-scale set",
+    ],
   },
   {
     id: "toggle_entity_culling",
     defaultEnabled: true,
     defaultPermission: "ce.command.admin.toggle_entity_culling",
-    defaultUsage: ["/ce feature toggle-entity-culling"],
+    defaultUsage: [
+      "/craftengine feature toggle-entity-culling",
+      "/ce feature toggle-entity-culling",
+    ],
+  },
+  {
+    id: "set_damage_visibility",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.set_damage_visibility",
+    defaultUsage: [
+      "/craftengine feature damage-visibility set",
+      "/ce feature damage-visibility set",
+    ],
   },
   {
     id: "place_feature",
     defaultEnabled: true,
     defaultPermission: "ce.command.admin.place_feature",
-    defaultUsage: ["/ce feature place-feature"],
-  },
-  {
-    id: "set_item_custom_model_data",
-    defaultEnabled: true,
-    defaultPermission: "ce.command.admin.custom_model_data",
     defaultUsage: [
-      "/craftengine item custom-model-data",
-      "/ce item custom-model-data",
+      "/craftengine feature place-feature",
+      "/ce feature place-feature",
     ],
   },
   {
-    id: "set_item_item_model",
+    id: "item_component_add",
     defaultEnabled: true,
-    defaultPermission: "ce.command.admin.item_model",
-    defaultUsage: ["/craftengine item item-model", "/ce item item-model"],
+    defaultPermission: "ce.command.admin.item.component.add",
+    defaultUsage: [
+      "/craftengine item component add",
+      "/ce item component add",
+    ],
   },
   {
-    id: "remove_item_component",
+    id: "item_component_remove",
     defaultEnabled: true,
-    defaultPermission: "ce.command.admin.remove_component",
+    defaultPermission: "ce.command.admin.item.component.remove",
     defaultUsage: [
-      "/craftengine item remove-component",
-      "/ce item remove-component",
+      "/craftengine item component remove",
+      "/ce item component remove",
+    ],
+  },
+  {
+    id: "item_component_reset",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.item.component.reset",
+    defaultUsage: [
+      "/craftengine item component reset",
+      "/ce item component reset",
     ],
   },
   {
@@ -268,6 +353,15 @@ export const COMMAND_FEATURES: readonly CommandFeatureDefinition[] = [
     defaultUsage: [
       "/craftengine feature migrate-world-storage",
       "/ce feature migrate-world-storage",
+    ],
+  },
+  {
+    id: "clear_world_storage",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.admin.clear_world_storage",
+    defaultUsage: [
+      "/craftengine feature clear-world-storage",
+      "/ce feature clear-world-storage",
     ],
   },
   {
@@ -286,6 +380,15 @@ export const COMMAND_FEATURES: readonly CommandFeatureDefinition[] = [
     defaultUsage: ["/craftengine debug setblock", "/ce debug setblock"],
   },
   {
+    id: "debug_fill_section",
+    defaultEnabled: false,
+    defaultPermission: "ce.command.debug.fill_section",
+    defaultUsage: [
+      "/craftengine debug fill-section",
+      "/ce debug fill-section",
+    ],
+  },
+  {
     id: "debug_spawn_furniture",
     defaultEnabled: true,
     defaultPermission: "ce.command.debug.spawn_furniture",
@@ -301,6 +404,24 @@ export const COMMAND_FEATURES: readonly CommandFeatureDefinition[] = [
     defaultUsage: [
       "/craftengine debug get-block-state-registry-id",
       "/ce debug get-block-state-registry-id",
+    ],
+  },
+  {
+    id: "debug_internal_block_state",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.internal_block_state",
+    defaultUsage: [
+      "/craftengine debug internal-block-state",
+      "/ce debug internal-block-state",
+    ],
+  },
+  {
+    id: "debug_export_block_state_mappings",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.export_block_state_mappings",
+    defaultUsage: [
+      "/craftengine debug export-block-state-mappings",
+      "/ce debug export-block-state-mappings",
     ],
   },
   {
@@ -346,13 +467,41 @@ export const COMMAND_FEATURES: readonly CommandFeatureDefinition[] = [
     ],
   },
   {
+    id: "debug_item_id",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.item_id",
+    defaultUsage: [
+      "/craftengine debug item-id",
+      "/ce debug item-id",
+    ],
+  },
+  {
     id: "debug_item_data",
     defaultEnabled: true,
     defaultPermission: "ce.command.debug.item_data",
     defaultUsage: [
       "/craftengine debug item-data",
       "/ce debug item-data",
+      "/craftengine item debug",
       "/ce item debug",
+    ],
+  },
+  {
+    id: "debug_item_component",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.item_component",
+    defaultUsage: [
+      "/craftengine debug item-component",
+      "/ce debug item-component",
+    ],
+  },
+  {
+    id: "debug_item_sources",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.item_sources",
+    defaultUsage: [
+      "/craftengine debug item-sources",
+      "/ce debug item-sources",
     ],
   },
   {
@@ -380,12 +529,21 @@ export const COMMAND_FEATURES: readonly CommandFeatureDefinition[] = [
     ],
   },
   {
-    id: "debug_migrate_templates",
+    id: "debug_pack_states",
     defaultEnabled: true,
-    defaultPermission: "ce.command.debug.migrate_templates",
+    defaultPermission: "ce.command.debug.pack_states",
     defaultUsage: [
-      "/craftengine debug migrate-templates",
-      "/ce debug migrate-templates",
+      "/craftengine debug pack-states",
+      "/ce debug pack-states",
+    ],
+  },
+  {
+    id: "debug_expression",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.expression",
+    defaultUsage: [
+      "/craftengine debug expression",
+      "/ce debug expression",
     ],
   },
   {
@@ -402,6 +560,15 @@ export const COMMAND_FEATURES: readonly CommandFeatureDefinition[] = [
     defaultEnabled: true,
     defaultPermission: "ce.command.debug.entity_id",
     defaultUsage: ["/craftengine debug entity-id", "/ce debug entity-id"],
+  },
+  {
+    id: "debug_dimension",
+    defaultEnabled: true,
+    defaultPermission: "ce.command.debug.dimension",
+    defaultUsage: [
+      "/craftengine debug dimension",
+      "/ce debug dimension",
+    ],
   },
   {
     id: "debug_custom_model_data",
@@ -457,9 +624,10 @@ export const COMMAND_FEATURES: readonly CommandFeatureDefinition[] = [
 ];
 
 export const COMMAND_ROOT_FIELDS: readonly SchemaField[] = [
-  field("config-version", Messages.src.config.files.standalone.text0001, {
-    snippet: `config-version: "${COMMANDS_CONFIG_VERSION}"`,
-    values: [`"${COMMANDS_CONFIG_VERSION}"`],
+  field("___version___", "命令配置版本；旧版本号会被 CraftEngine 自动升级", {
+    aliases: ["config-version"],
+    snippet: `___version___: "${COMMANDS_CONFIG_VERSION}"`,
+    values: [COMMANDS_CONFIG_VERSION, LEGACY_CONFIG_VERSION],
   }),
   ...COMMAND_FEATURES.map((feature) =>
     field(
@@ -546,7 +714,7 @@ export function standaloneSchemaForContext(
           valueKind: "mapping",
           unknownKeys: "ignored",
         };
-      if (path[0] === "config-version")
+      if (path[0] === "___version___")
         return { file, fields: [], valueKind: "string", unknownKeys: "fixed" };
 
       const feature = COMMAND_FEATURES.find(

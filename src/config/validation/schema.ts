@@ -1,5 +1,6 @@
 import { schemaFieldForName, semanticForField } from "../schema/types.js";
 import { isNumberProviderScalar } from "../number-provider/schema.js";
+import { legacyKeyAccepted } from "../registry/legacyKeys.js";
 import { craftEngineBoolean } from "../parsing/packMetadata.js";
 import type { ConfigurationSource } from "../model.js";
 import type { SchemaContext, SchemaField } from "../schema/types.js";
@@ -143,6 +144,8 @@ export interface SchemaValidationRequest {
   readonly fieldPath?: string;
   readonly domainLabel: string;
   readonly rootKind?: SchemaRootKind;
+  // 声明版本早于旧键被删除的版本时, 这些键按当时合法处理, 不再报未知字段
+  readonly configVersion?: number;
   readonly issueCodes?: Partial<SchemaValidationIssueCodes>;
   // open 会继续检查里面, skip 会直接停止, diagnose 会报一次并停止后续报错
   readonly unknownField?: SchemaUnknownFieldResolver;
@@ -419,7 +422,10 @@ function validateMapping(
         fields: resolved.fields,
       }) ?? "diagnose";
     actions.set(key, action);
-    if (action === "diagnose") {
+    if (
+      action === "diagnose" &&
+      !legacyKeyAccepted(childFieldPath, request.configVersion)
+    ) {
       issues.push(
         issue(
           request.source,

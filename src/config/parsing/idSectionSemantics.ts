@@ -23,7 +23,7 @@ export const ID_SECTION_PARSER_FAMILY_BY_RESOURCE_KIND = {
   block: "blocks",
   furniture: "furniture",
   loot: "loot",
-  "vanilla-loot": "vanilla-loots",
+  "vanilla-loot": "loot-sources",
   equipment: "equipments",
   "jukebox-song": "jukebox-songs",
   "sound-event": "sounds",
@@ -34,6 +34,11 @@ export const ID_SECTION_PARSER_FAMILY_BY_RESOURCE_KIND = {
   "configured-feature": "configured-feature",
   "placed-feature": "placed-feature",
   advancement: "advancements",
+  entity: "entities",
+  attribute: "attributes",
+  "attribute-operation": "attribute-operations",
+  "equipment-set": "equipment-sets",
+  atlas: "atlases",
 } as const satisfies Readonly<
   Record<ResourceKind, CraftEngineCanonicalSectionType>
 >;

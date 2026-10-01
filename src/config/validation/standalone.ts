@@ -1,11 +1,18 @@
 import { configFileFieldsForContext } from "../schema/configFile.js";
 import type { ParsedYamlFile } from "../model.js";
 import {
+  COMMANDS_CONFIG_VERSION,
+  LEGACY_CONFIG_VERSION,
+  LEGACY_LANG_VERSION,
+  SUPPORTED_CONFIG_VERSIONS,
+  SUPPORTED_LANG_VERSIONS,
+  TRANSLATION_LANG_VERSION,
   standaloneFileInfo,
   standaloneSchemaForContext,
   type StandaloneValueKind,
 } from "../files/standalone.js";
 import type { SchemaContext, SchemaField } from "../schema/types.js";
+import { CURRENT_CONFIG_VERSION } from "../registry/legacyKeys.js";
 import type { CoreIssue, TextRange } from "../../diagnostics/model.js";
 import { appendPath as at } from "../../util/paths.js";
 import { isRecord, isUnknownArray } from "../../util/records.js";
@@ -17,7 +24,6 @@ import {
   type SchemaConstraintResult,
 } from "./schema.js";
 import {
-  booleanConstraint,
   customIssue,
   dynamicKey,
   dynamicValidationField,
@@ -25,7 +31,6 @@ import {
   exactFields,
   isScalar,
   issueCodes,
-  mappingOrList,
   obviouslyInvalidRegex,
   oneProblem,
   originalSemantic,
@@ -35,7 +40,13 @@ import {
 } from "./shared.js";
 
 import { Messages } from "../../messages.js";
-function standaloneRoot(parsed: ParsedYamlFile): RootTree {
+import { craftEngineBoolean } from "../parsing/packMetadata.js";
+import { evaluateExpression } from "../expression/evaluator.js";
+interface StandaloneTree extends RootTree {
+  readonly text: string;
+}
+
+function standaloneRoot(parsed: ParsedYamlFile): StandaloneTree {
   const value: Record<string, unknown> = {};
   const keys = new Map<string, TextRange>();
   const values = new Map<string, TextRange>();
@@ -51,6 +62,7 @@ function standaloneRoot(parsed: ParsedYamlFile): RootTree {
   const fullRange = { start: 0, end: Math.max(parsed.text.length, 1) };
   return {
     value,
+    text: parsed.text,
     source: {
       uri: parsed.uri,
       idRange: parsed.sections[0]?.keyRange ?? fullRange,
@@ -94,11 +106,86 @@ function configTypeValue(field: SchemaField, value: string): string {
 function inferredConfigShape(
   field: SchemaField,
   fieldPath: string,
-): "mapping" | "list" | "mapping-or-list" | undefined {
-  if (fieldPath === "resource-pack.delivery.hosting") return "mapping-or-list";
+): "mapping" | "list" | undefined {
   if (fieldPath.endsWith(".timeout")) return undefined;
   if (/^[^\n]+:\n\s+-/u.test(field.snippet)) return "list";
   if (/^[^\n]+:\n\s+/u.test(field.snippet)) return "mapping";
+  return undefined;
+}
+
+function sparrowConfigBoolean(value: unknown): boolean {
+  try {
+    craftEngineBoolean(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function sparrowConfigNumber(value: unknown): number | undefined {
+  if (typeof value === "number") return value;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  const normalized = value.trim().replaceAll("_", "");
+  if (normalized === "NaN") return Number.NaN;
+  const parsed = Number(normalized);
+  if (!Number.isNaN(parsed)) return parsed;
+  try {
+    const evaluated = evaluateExpression(value);
+    return typeof evaluated === "number" ? evaluated : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// CE 的版本校验是字符串等值: Config.java:307,329 拿 craft-engine.properties 里的
+// "114"/"83" 和提取值比较, 提取值由 ConfigVersionExtractor.java:18-24 取标量、
+// sparrow-yaml 的 FieldVersionExtractor.java:34-56 对数字做 String.valueOf 得到。
+// sparrow-yaml 用的 SnakeYAML 只把规范的十进制整数写法当数字:
+// `114` 解析成 Integer 得到 "114", `"114"` 是字符串原样取出,
+// 而 `114.0`/`1.14e2` 是 Double 得到 "114.0", `+114`/`0114`/`0x72`/`114_0` 连数字都不是,
+// 会按原样字符串取出, 所以这些写法都不等于 "114"。
+function versionScalarText(
+  tree: StandaloneTree,
+  fieldPath: string,
+  value: unknown,
+): string | undefined {
+  if (typeof value === "string") return value;
+  if (typeof value !== "number") return undefined;
+  // 数字只能靠原始标量文本区分 `114` 与 `114.0`/`+114`/`0114`
+  const range = tree.source.fieldValueRanges.get(fieldPath);
+  const raw =
+    range === undefined ? undefined : tree.text.slice(range.start, range.end);
+  if (raw !== undefined) return /^(?:0|[1-9]\d*)$/u.test(raw) ? raw : undefined;
+  return Number.isInteger(value) ? String(value) : undefined;
+}
+
+  // CraftEngine 会把版本不等于当前的文件整体升级(Config.java:329-331),
+  // 所以旧版本号的文件依然可用; 只有区间外的写法才算写错
+function versionSupported(
+  tree: StandaloneTree,
+  fieldPath: string,
+  value: unknown,
+  supported: ReadonlySet<string>,
+): boolean {
+  const text = versionScalarText(tree, fieldPath, value);
+  return text !== undefined && supported.has(text);
+}
+
+  // 老版本 config.yml/commands.yml 用的是 config-version 这个键名
+function isVersionField(fieldPath: string): boolean {
+  return fieldPath === "___version___" || fieldPath === "config-version";
+}
+
+  // 文件自己声明的版本, 用于放宽旧键校验; 读不到 (缺失或写法不是规范十进制) 时返回 undefined
+function declaredConfigVersion(tree: StandaloneTree): number | undefined {
+  const root = tree.value;
+  if (!isRecord(root)) return undefined;
+  for (const key of ["___version___", "config-version"]) {
+    const text = versionScalarText(tree, key, root[key]);
+    if (text === undefined) continue;
+    return /^(?:0|[1-9]\d*)$/u.test(text) ? Number(text) : undefined;
+  }
   return undefined;
 }
 
@@ -106,9 +193,33 @@ function configConstraint(
   context: Parameters<
     NonNullable<Parameters<typeof validateSchema>[0]["constraints"]>
   >[0],
+  tree: StandaloneTree,
 ): SchemaConstraintResult | undefined {
-  const boolean = booleanConstraint("config", context);
-  if (boolean) return boolean;
+  if (context.field.valueProvider === "boolean") {
+    return sparrowConfigBoolean(context.value)
+      ? { replaceBuiltIn: true }
+      : oneProblem(
+          problem(
+            "invalid-config-boolean",
+            Messages.src.config.validation.shared.text0003(
+              "config.yml",
+              context.fieldPath,
+            ),
+          ),
+          true,
+        );
+  }
+  if (context.field.valueProvider === "number") {
+    return sparrowConfigNumber(context.value) !== undefined
+      ? { replaceBuiltIn: true }
+      : oneProblem(
+          problem(
+            "invalid-config-number",
+            `${context.fieldPath} 必须是数字或普通数字字符串`,
+          ),
+          true,
+        );
+  }
   const semantic = originalSemantic(context.field);
   const configuredKey = dynamicKey(context.field);
   switch (semantic) {
@@ -159,7 +270,7 @@ function configConstraint(
   }
 
   if (semantic === "type" && context.field.values) {
-    if (typeof context.value !== "string") {
+    if (!isScalar(context.value)) {
       return oneProblem(
         problem(
           "invalid-config-enum",
@@ -170,7 +281,7 @@ function configConstraint(
     }
     if (
       !context.field.values.includes(
-        configTypeValue(context.field, context.value),
+        configTypeValue(context.field, String(context.value)),
       )
     ) {
       return oneProblem(
@@ -187,12 +298,22 @@ function configConstraint(
     return { replaceBuiltIn: true };
   }
 
-  if (context.fieldPath === "config-version") {
-    if (context.value !== "84") {
+  if (isVersionField(context.fieldPath)) {
+    if (
+      !versionSupported(
+        tree,
+        context.fieldPath,
+        context.value,
+        SUPPORTED_CONFIG_VERSIONS,
+      )
+    ) {
       return oneProblem(
         problem(
           "invalid-config-version",
-          Messages.src.config.validation.standalone.text0006,
+          Messages.src.config.validation.standalone.text0033(
+            LEGACY_CONFIG_VERSION,
+            COMMANDS_CONFIG_VERSION,
+          ),
         ),
         true,
       );
@@ -266,6 +387,29 @@ function configConstraint(
   }
 
   if (
+    context.fieldPath.startsWith("resource-pack.workflows.") &&
+    context.fieldPath.endsWith(".trigger")
+  ) {
+    // resource-pack.workflows.<name>.trigger 接受单个字符串或字符串列表
+    if (
+      !isScalar(context.value) &&
+      !(
+        isUnknownArray(context.value) &&
+        context.value.every((entry) => isScalar(entry))
+      )
+    ) {
+      return oneProblem(
+        problem(
+          "invalid-config-list",
+          `config.yml 的 ${context.fieldPath} 必须是字符串或字符串列表`,
+        ),
+        true,
+      );
+    }
+    return { replaceBuiltIn: true };
+  }
+
+  if (
     (semantic === "terms" || semantic === "term") &&
     isRecord(context.value)
   ) {
@@ -301,14 +445,6 @@ function configConstraint(
       ),
     );
   }
-  if (shape === "mapping-or-list" && !mappingOrList(context.value)) {
-    return oneProblem(
-      problem(
-        "invalid-config-hosting",
-        Messages.src.config.validation.standalone.text0014,
-      ),
-    );
-  }
   if (shape === undefined && context.fieldPath.endsWith(".timeout")) {
     if (
       !isRecord(context.value) &&
@@ -336,8 +472,6 @@ function configConstraint(
   }
   if (
     shape === undefined &&
-    context.field.valueProvider !== "boolean" &&
-    context.field.valueProvider !== "number" &&
     context.field.values === undefined &&
     context.value !== null &&
     !isScalar(context.value)
@@ -352,19 +486,23 @@ function configConstraint(
   return undefined;
 }
 
-function validateConfigFile(tree: RootTree): readonly CoreIssue[] {
+function validateConfigFile(
+  tree: StandaloneTree,
+  configVersion: number,
+): readonly CoreIssue[] {
   return validateSchema({
     value: tree.value,
     source: tree.source,
     domainLabel: "config.yml",
     fieldsForContext: (context) => configDynamicFields(tree.value, context),
+    configVersion,
     issueCodes: issueCodes("config"),
     unknownField: (context) => {
       const base = configFileFieldsForContext(context);
       if (base.some((field) => /^<[^>]+>$/u.test(field.label))) return "open";
       return base.length === 0 && context.path.length > 0 ? "skip" : "diagnose";
     },
-    constraints: configConstraint,
+    constraints: (context) => configConstraint(context, tree),
   });
 }
 
@@ -461,6 +599,7 @@ function standaloneConstraint(
   context: Parameters<
     NonNullable<Parameters<typeof validateSchema>[0]["constraints"]>
   >[0],
+  tree: StandaloneTree,
 ): SchemaConstraintResult | undefined {
   const schema = standaloneSchemaForContext(filePath, {
     path: context.path,
@@ -468,15 +607,22 @@ function standaloneConstraint(
   });
   if (!schema) return undefined;
 
-  if (
-    schema.file.kind === "commands" &&
-    context.fieldPath === "config-version"
-  ) {
-    if (context.value !== "84") {
+  if (schema.file.kind === "commands" && isVersionField(context.fieldPath)) {
+    if (
+      !versionSupported(
+        tree,
+        context.fieldPath,
+        context.value,
+        SUPPORTED_CONFIG_VERSIONS,
+      )
+    ) {
       return oneProblem(
         problem(
           "invalid-commands-version",
-          Messages.src.config.validation.standalone.text0026,
+          Messages.src.config.validation.standalone.text0034(
+            LEGACY_CONFIG_VERSION,
+            COMMANDS_CONFIG_VERSION,
+          ),
         ),
         true,
       );
@@ -487,11 +633,22 @@ function standaloneConstraint(
     schema.file.kind === "translation" &&
     context.fieldPath === "lang-version"
   ) {
-    if (finiteSchemaNumber(context.value) !== 65) {
+    // CE 同样按字符串比较翻译版本: TranslationManagerImpl.java:282-283
+    if (
+      !versionSupported(
+        tree,
+        context.fieldPath,
+        context.value,
+        SUPPORTED_LANG_VERSIONS,
+      )
+    ) {
       return oneProblem(
         problem(
           "invalid-translation-version",
-          Messages.src.config.validation.standalone.text0027,
+          Messages.src.config.validation.standalone.text0027(
+            String(LEGACY_LANG_VERSION),
+            String(TRANSLATION_LANG_VERSION),
+          ),
         ),
         true,
       );
@@ -507,36 +664,6 @@ function standaloneConstraint(
   );
   if (valueProblem) problems.push(valueProblem);
 
-  if (schema.file.kind === "pack" && dynamicKey(context.field) !== undefined) {
-    const key = dynamicKey(context.field)!;
-    if (
-      key === "." ||
-      key === ".." ||
-      key.includes("/") ||
-      key.includes("\\")
-    ) {
-      problems.push(
-        problem(
-          "invalid-pack-subpack-id",
-          Messages.src.config.validation.standalone.text0028(key),
-          "key",
-        ),
-      );
-    }
-  }
-  if (
-    schema.file.kind === "pack" &&
-    context.fieldPath === "namespace" &&
-    (typeof context.value !== "string" ||
-      !/^[a-z0-9_.-]+$/u.test(context.value))
-  ) {
-    problems.push(
-      problem(
-        "invalid-pack-namespace",
-        Messages.src.config.validation.standalone.text0029,
-      ),
-    );
-  }
   if (
     schema.file.kind === "commands" &&
     context.fieldPath.endsWith(".usage") &&
@@ -571,10 +698,16 @@ function standaloneConstraint(
 
 function validateKnownStandalone(
   parsed: ParsedYamlFile,
-  tree: RootTree,
+  tree: StandaloneTree,
+  configVersion: number,
 ): readonly CoreIssue[] {
   const file = standaloneFileInfo(parsed.uri);
   if (!file) return [];
+  // commands.yml 用文件自己声明的版本, pack.yml 与翻译文件没有版本标记, 用工作区版本
+  const effectiveVersion =
+    file.kind === "commands"
+      ? (declaredConfigVersion(tree) ?? configVersion)
+      : configVersion;
   const issues = [
     ...validateSchema({
       value: tree.value,
@@ -589,6 +722,7 @@ function validateKnownStandalone(
               ),
       fieldsForContext: (context) =>
         standaloneDynamicFields(parsed.uri, tree.value, context),
+      configVersion: effectiveVersion,
       issueCodes: issueCodes(file.kind),
       unknownField: (context) => {
         const schema = standaloneSchemaForContext(parsed.uri, context);
@@ -596,7 +730,7 @@ function validateKnownStandalone(
         if (schema?.unknownKeys === "ignored") return "skip";
         return "diagnose";
       },
-      constraints: (context) => standaloneConstraint(parsed.uri, context),
+      constraints: (context) => standaloneConstraint(parsed.uri, context, tree),
     }),
   ];
 
@@ -609,7 +743,7 @@ function validateKnownStandalone(
       if (
         !rootSchema ||
         !exactFieldForName(feature, rootSchema.fields) ||
-        feature === "config-version" ||
+        feature === "___version___" ||
         !isRecord(value) ||
         value.enable !== true
       )
@@ -642,9 +776,11 @@ function validateKnownStandalone(
 
 export function validateStandaloneParsedFile(
   parsed: ParsedYamlFile,
+  configVersion: number = CURRENT_CONFIG_VERSION,
 ): readonly CoreIssue[] {
   const tree = standaloneRoot(parsed);
   if (parsed.uri.replaceAll("\\", "/").split("/").at(-1) === "config.yml")
-    return validateConfigFile(tree);
-  return validateKnownStandalone(parsed, tree);
+    // config.yml 用自己的声明版本, 读不到时退回工作区版本
+    return validateConfigFile(tree, declaredConfigVersion(tree) ?? configVersion);
+  return validateKnownStandalone(parsed, tree, configVersion);
 }

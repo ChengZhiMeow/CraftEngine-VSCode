@@ -24,34 +24,19 @@ interface SoundReferenceCollector {
 }
 
 const DEFAULT_SOUND: SoundDefaults = { volume: 1, pitch: 1 };
-const EVENT_TRIGGERS = new Set([
-  "left_click",
-  "right_click",
-  "use_on",
-  "use",
-  "use_item_on",
-  "attack",
-  "hit",
-  "eat",
-  "consume",
-  "drink",
-  "break",
-  "dig",
-  "place",
-  "build",
-  "pick_up",
-  "pick",
-  "step",
-  "fall",
-  "shoot",
-]);
-
 function selectedField(
   value: Readonly<Record<string, unknown>>,
   names: readonly string[],
 ): readonly [name: string, value: unknown] | undefined {
-  const name = names.find((candidate) => Object.hasOwn(value, candidate));
-  return name === undefined ? undefined : [name, value[name]];
+  for (const name of names) {
+    if (
+      Object.hasOwn(value, name) &&
+      value[name] !== null &&
+      value[name] !== undefined
+    )
+      return [name, value[name]];
+  }
+  return undefined;
 }
 
 function sectionKey(value: string): string {
@@ -440,18 +425,54 @@ function collectFunctions(
   });
 }
 
+// CE 的触发器不是任意字符串: CommonFunctions.parseEvents 逐个用 EventTriggerResolver 解析
+// (CommonFunctions.java:109-140), 解析不到就抛 PARSE_ENUM_FAILED 且不解析它的函数。
+// 可用触发器是 EventTrigger 注册的名字与别名(EventTrigger.java:16-27), 查找前整体转小写
+// (EventTrigger.java:81-101); block/furniture/item 各自再把 break 映射成对应的 *_break
+// (AbstractBlockManager.java:61、AbstractFurnitureManager.java:41、AbstractItemManager.java:49)。
+const EVENT_TRIGGERS = new Set([
+  "left_click",
+  "right_click",
+  "use_on",
+  "use",
+  "use_item_on",
+  "attack",
+  "hit",
+  "consume",
+  "eat",
+  "drink",
+  "block_break",
+  "dig",
+  "item_break",
+  "furniture_break",
+  "place",
+  "build",
+  "pick_up",
+  "pick",
+  "step",
+  "fall",
+  "shoot",
+  "break",
+]);
+
+// 和采集函数类型一样, 扩展插件注册的触发器在这里分辨不了, 一律跳过
+function isEventTrigger(value: string): boolean {
+  return EVENT_TRIGGERS.has(
+    localRegistryDiscriminator(value.toLowerCase(), "craftengine") ?? "",
+  );
+}
+
 function collectEvents(
   collector: SoundReferenceCollector,
   value: Readonly<Record<string, unknown>>,
   pathName: string,
 ): void {
-  const selected = selectedField(value, ["events", "event"]);
+  const selected = selectedField(value, ["event", "events"]);
   if (!selected) return;
   const eventsPath = appendPath(pathName, selected[0]);
   if (isRecord(selected[1])) {
     for (const [trigger, functions] of Object.entries(selected[1])) {
-      if (!EVENT_TRIGGERS.has(trigger.replaceAll("-", "_").toLowerCase()))
-        continue;
+      if (!isEventTrigger(trigger)) continue;
       collectFunctions(collector, functions, appendPath(eventsPath, trigger));
     }
     return;
@@ -461,9 +482,7 @@ function collectEvents(
     if (!isRecord(event)) return;
     if (
       !(isUnknownArray(event.on) ? event.on : [event.on]).some(
-        (trigger) =>
-          typeof trigger === "string" &&
-          EVENT_TRIGGERS.has(trigger.replaceAll("-", "_").toLowerCase()),
+        (trigger) => typeof trigger === "string" && isEventTrigger(trigger),
       )
     )
       return;
@@ -560,7 +579,7 @@ function collectFurnitureBehaviors(
   value: Readonly<Record<string, unknown>>,
   pathName: string,
 ): void {
-  const selected = selectedField(value, ["behaviors", "behavior"]);
+  const selected = selectedField(value, ["behavior", "behaviors"]);
   if (!selected) return;
   const basePath = appendPath(pathName, selected[0]);
   (isUnknownArray(selected[1]) ? selected[1] : [selected[1]]).forEach(
@@ -769,7 +788,7 @@ function collectItemBehaviors(
   value: Readonly<Record<string, unknown>>,
   pathName: string,
 ): void {
-  const selected = selectedField(value, ["behaviors", "behavior"]);
+  const selected = selectedField(value, ["behavior", "behaviors"]);
   if (!selected) return;
   const basePath = appendPath(pathName, selected[0]);
   (isUnknownArray(selected[1]) ? selected[1] : [selected[1]]).forEach(
@@ -842,6 +861,20 @@ function collectItem(
           setting.sounds,
           appendPath(settingPath, "sounds"),
         );
+      } else if (type === "drag_repair_item") {
+        (isUnknownArray(setting) ? setting : [setting]).forEach(
+          (entry, index) => {
+            if (!isRecord(entry) || entry.sound === undefined) return;
+            const entryPath = isUnknownArray(setting)
+              ? appendPath(settingPath, index)
+              : settingPath;
+            collectSoundData(
+              collector,
+              entry.sound,
+              appendPath(entryPath, "sound"),
+            );
+          },
+        );
       }
     }
   collectItemData(collector, value.data, "data");
@@ -850,6 +883,9 @@ function collectItem(
     "client-bound-data",
   ]);
   if (clientData) collectItemData(collector, clientData[1], clientData[0]);
+  const overrideData = selectedField(value, ["override_data", "override-data"]);
+  if (overrideData)
+    collectItemData(collector, overrideData[1], overrideData[0]);
   collectItemUpdater(collector, value.updater, "updater");
   collectItemBehaviors(collector, value, "");
   collectEvents(collector, value, "");

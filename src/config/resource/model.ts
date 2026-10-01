@@ -9,6 +9,11 @@ export type GenericResourceKind = Extract<
   | "configured-feature"
   | "placed-feature"
   | "advancement"
+  | "entity"
+  | "attribute"
+  | "attribute-operation"
+  | "equipment-set"
+  | "atlas"
 >;
 
 export interface GenericResourceDefinition {

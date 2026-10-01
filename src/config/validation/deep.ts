@@ -19,6 +19,7 @@ import {
   dataComponentValueField,
 } from "../item/dataComponents.js";
 import {
+  fieldsForDiscriminator,
   itemDataDynamicValueField,
   itemDataProcessorField,
   itemFieldsForContext,
@@ -35,6 +36,7 @@ import {
 } from "../loot/schema.js";
 import type { ConfigurationCandidateInput } from "../model.js";
 import { validateSchemaNumberProviders } from "../number-provider/validation.js";
+import { CURRENT_CONFIG_VERSION } from "../registry/legacyKeys.js";
 import { parseVanillaBlockState } from "../../minecraft/block/states.js";
 import type { SchemaContext, SchemaField } from "../schema/types.js";
 import type { CoreIssue } from "../../diagnostics/model.js";
@@ -394,7 +396,23 @@ function lootMappedFields(
 function vanillaLootMappedFields(
   context: SchemaContext,
 ): readonly SchemaField[] {
-  if (["loot", "loots"].includes(compactPath(context.path)[0] ?? "")) return [];
+  const compact = compactPath(context.path);
+  if (["loot", "loots"].includes(compact[0] ?? "")) return [];
+  if (
+    compact.some(
+      (part) =>
+        part === "condition" || part === "conditions" || part === "term" || part === "terms",
+    )
+  )
+    return exactFields(
+      prepareDiscriminatorFields(
+        fieldsForDiscriminator(
+          "condition",
+          context.siblingValues.get("type"),
+        ),
+        context,
+      ),
+    );
   return exactFields(
     withoutIdControlValidation(
       vanillaLootFieldsForContext(context).map((field) =>
@@ -411,7 +429,7 @@ function ceExternalType(value: string | undefined): boolean {
   const raw = value.replace(/^!/u, "");
   const separator = raw.indexOf(":");
   return (
-    separator >= 0 && raw.slice(0, separator).toLowerCase() !== "craftengine"
+    separator >= 0 && raw.slice(0, separator) !== "craftengine"
   );
 }
 
@@ -867,6 +885,23 @@ function deepConstraint(
   if (
     semantic !== "type" &&
     context.field.values &&
+    semantic === "on"
+  ) {
+    const triggers = Array.isArray(context.value)
+      ? context.value
+      : [context.value];
+    if (
+      triggers.length > 0 &&
+      triggers.every(
+        (trigger) => typeof trigger === "string" && trigger.trim() !== "",
+      )
+    )
+      // EventTrigger 是可写注册表；除内置 ID 与别名外还允许插件注册的触发器。
+      return { replaceBuiltIn: true };
+  }
+  if (
+    semantic !== "type" &&
+    context.field.values &&
     typeof context.value === "string"
   ) {
     const configured = context.value;
@@ -902,6 +937,7 @@ function deepConstraint(
 
 export function validateDeepCandidate(
   candidate: ConfigurationCandidateInput & { readonly kind: DeepCandidateKind },
+  configVersion: number = CURRENT_CONFIG_VERSION,
 ): readonly CoreIssue[] {
   const fieldsForContext = (context: SchemaContext): readonly SchemaField[] => {
     if (functionOrConditionOwnedOpenMapping(context)) return [];
@@ -956,6 +992,7 @@ export function validateDeepCandidate(
       path: [candidate.rawId],
       domainLabel: candidateLabel(candidate),
       fieldsForContext,
+      configVersion,
       issueCodes: issueCodes(candidate.kind),
       unknownField: (context) => {
         if (context.path.length === 1) return "skip";
@@ -967,6 +1004,13 @@ export function validateDeepCandidate(
           ["model", "models", "legacy_model"].includes(compact[0] ?? "")
         )
           return "skip";
+        if (
+          (candidate.kind === "item" ||
+            candidate.kind === "block" ||
+            candidate.kind === "furniture") &&
+          (compact.at(-1) === "event" || compact.at(-1) === "events")
+        )
+          return "open";
         if (
           (candidate.kind === "block" || candidate.kind === "furniture") &&
           ["behavior", "behaviors", "elements"].includes(compact.at(-1) ?? "")
@@ -1041,8 +1085,22 @@ export function validateDeepCandidate(
   if (candidate.kind !== "vanilla-loot" || !isRecord(candidate.value))
     return deduplicateCoreIssues(issues);
 
-  const target = candidate.value.target;
-  if (target === undefined || (isUnknownArray(target) && target.length === 0)) {
+  const sourceType =
+    typeof candidate.value.type === "string"
+      ? candidate.value.type === "block"
+        ? "block_break"
+        : candidate.value.type === "entity"
+          ? "entity_death"
+          : candidate.value.type === "shear_block"
+            ? "block_shear"
+            : candidate.value.type
+      : undefined;
+  const target = candidate.value.target ?? candidate.value.targets;
+  if (
+    sourceType !== "fishing" &&
+    sourceType !== "piglin_barter" &&
+    (target === undefined || (isUnknownArray(target) && target.length === 0))
+  ) {
     issues.push(
       customIssue(
         candidate.source,

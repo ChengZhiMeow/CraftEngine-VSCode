@@ -10,6 +10,7 @@ import {
   isValidRegistryDiscriminator,
   localRegistryDiscriminator,
 } from "../registry/discriminators.js";
+import { legacyKeyAccepted } from "../registry/legacyKeys.js";
 import { validateSchemaNumberProviders } from "../number-provider/validation.js";
 import { craftEngineBoolean } from "../parsing/packMetadata.js";
 import { buildFurnitureIndex } from "../furniture/parser.js";
@@ -57,6 +58,8 @@ export interface ItemBuildOptions {
   readonly vanillaBlocks?: ReadonlySet<string>;
   readonly vanillaBlockStates?: VanillaBlockStateCatalog;
   readonly vanillaEntityTypes?: ReadonlySet<string>;
+  // 资源段没有版本标记, 用工作区 config.yml 声明的版本放宽旧键
+  readonly configVersion?: number;
 }
 
 export interface ItemBuildResult {
@@ -186,8 +189,11 @@ function field(
   raw: Readonly<Record<string, unknown>>,
   names: readonly string[],
 ): [name: string, value: unknown] | undefined {
-  for (const name of names)
-    if (Object.hasOwn(raw, name)) return [name, raw[name]];
+  for (const name of names) {
+    // 只能读自有属性: YAML 映射承载在普通对象上, 原型链上的同名键不是配置
+    const value = Object.hasOwn(raw, name) ? raw[name] : undefined;
+    if (value !== null && value !== undefined) return [name, value];
+  }
   return undefined;
 }
 
@@ -1165,21 +1171,25 @@ function validateItemConfiguration(
   issues: CoreIssue[],
 ): void {
   for (const key of Object.keys(raw)) {
-    if (!knownField(key, ITEM_ROOT_FIELDS))
-      issues.push(
-        issueAtKey(
-          source,
-          "unknown-item-field",
-          Messages.src.config.item.parser.text0039(key),
-          "warning",
-          key,
-        ),
-      );
+    if (knownField(key, ITEM_ROOT_FIELDS)) continue;
+    // 文件声明版本早于该键被删除的版本时, 当时合法的旧键不算未知字段
+    if (legacyKeyAccepted(key, options.configVersion)) continue;
+    issues.push(
+      issueAtKey(
+        source,
+        "unknown-item-field",
+        Messages.src.config.item.parser.text0039(key),
+        "warning",
+        key,
+      ),
+    );
   }
   for (const [containerName, fields] of [
     ["data", ITEM_DATA_FIELDS],
     ["client_bound_data", ITEM_DATA_FIELDS],
     ["client-bound-data", ITEM_DATA_FIELDS],
+    ["override_data", ITEM_DATA_FIELDS],
+    ["override-data", ITEM_DATA_FIELDS],
   ] as const) {
     const container = raw[containerName];
     if (!isRecord(container)) continue;
@@ -1235,6 +1245,8 @@ function validateItemConfiguration(
     "data",
     "client_bound_data",
     "client-bound-data",
+    "override_data",
+    "override-data",
   ]) {
     const container = raw[containerName];
     if (!isRecord(container)) continue;
@@ -1248,10 +1260,9 @@ function validateItemConfiguration(
   }
   if (raw.updater !== undefined)
     validateItemUpdater(raw.updater, source, options, issues);
-  const behaviors = raw.behaviors ?? raw.behavior;
-  const behaviorName = Object.hasOwn(raw, "behaviors")
-    ? "behaviors"
-    : "behavior";
+  const selectedBehaviors = field(raw, ["behavior", "behaviors"]);
+  const behaviors = selectedBehaviors?.[1];
+  const behaviorName = selectedBehaviors?.[0] ?? "behavior";
   const behaviorList = isUnknownArray(behaviors);
   for (const [index, behavior] of records(behaviors).entries()) {
     const behaviorPath = behaviorList
@@ -1604,21 +1615,23 @@ function validateItemConfiguration(
             );
         });
     }
-    const conditions = behavior.conditions ?? behavior.condition;
+    const conditions = behavior.condition ?? behavior.conditions;
     validateTypedTree(
       conditions,
       source,
-      `${behaviorPath}.${Object.hasOwn(behavior, "conditions") ? "conditions" : "condition"}`,
+      `${behaviorPath}.${Object.hasOwn(behavior, "condition") ? "condition" : "conditions"}`,
       "condition",
       issues,
       options,
     );
   }
-  const eventName = Object.hasOwn(raw, "events") ? "events" : "event";
-  const events = raw[eventName];
+  const selectedEvents = field(raw, ["event", "events"]);
+  const eventName = selectedEvents?.[0] ?? "event";
+  const events = selectedEvents?.[1];
   if (isRecord(events))
     for (const [trigger, functions] of Object.entries(events)) {
       if (
+        options.unknownExtensionSyntax === "warning" &&
         !(EVENT_TRIGGERS as readonly string[]).includes(
           trigger.replaceAll("-", "_").toLowerCase(),
         )
@@ -1649,6 +1662,7 @@ function validateItemConfiguration(
         (value): value is string => typeof value === "string",
       )) {
         if (
+          options.unknownExtensionSyntax === "warning" &&
           !(EVENT_TRIGGERS as readonly string[]).includes(
             trigger.replaceAll("-", "_").toLowerCase(),
           )
@@ -1665,9 +1679,9 @@ function validateItemConfiguration(
         }
       }
       validateTypedTree(
-        entry.conditions ?? entry.condition,
+        entry.condition ?? entry.conditions,
         source,
-        `${eventName}.${index}.conditions`,
+        `${eventName}.${index}.${Object.hasOwn(entry, "condition") ? "condition" : "conditions"}`,
         "condition",
         issues,
         options,
@@ -1866,14 +1880,14 @@ function validateItemUpdater(
           ? fieldValue
           : [fieldValue];
         for (const [componentIndex, component] of values.entries()) {
-          const id = makeIdentifier(
+          const componentId = makeIdentifier(
             String(component).toLowerCase(),
             "minecraft",
           );
           if (
             component !== null &&
             component !== undefined &&
-            isValidIdentifier(id)
+            isValidIdentifier(componentId)
           )
             continue;
           const componentPath = `${operationPath}.${fieldName}${isUnknownArray(fieldValue) ? `.${componentIndex}` : ""}`;
@@ -2133,7 +2147,7 @@ function inlineBlockConfigurations(
   const result: ConfigurationCandidateInput[] = [];
   for (const candidate of configurations) {
     if (candidate.kind !== "item" || !isRecord(candidate.value)) continue;
-    const selected = field(candidate.value, ["behaviors", "behavior"]);
+    const selected = field(candidate.value, ["behavior", "behaviors"]);
     if (!selected) continue;
     const values = isUnknownArray(selected[1]) ? selected[1] : [selected[1]];
     values.forEach((behavior, index) => {
@@ -2166,7 +2180,7 @@ function inlineFurnitureConfigurations(
   const result: ConfigurationCandidateInput[] = [];
   for (const candidate of configurations) {
     if (candidate.kind !== "item" || !isRecord(candidate.value)) continue;
-    const selected = field(candidate.value, ["behaviors", "behavior"]);
+    const selected = field(candidate.value, ["behavior", "behaviors"]);
     if (!selected) continue;
     const values = isUnknownArray(selected[1]) ? selected[1] : [selected[1]];
     values.forEach((behavior, index) => {
@@ -2202,7 +2216,7 @@ function validateFurnitureItemReferences(
   issues: CoreIssue[],
 ): void {
   for (const item of items) {
-    const selected = field(item.raw, ["behaviors", "behavior"]);
+    const selected = field(item.raw, ["behavior", "behaviors"]);
     if (!selected) continue;
     const values = isUnknownArray(selected[1]) ? selected[1] : [selected[1]];
     values.forEach((behavior, index) => {
@@ -2284,7 +2298,7 @@ function validateBlockItemReferences(
   issues: CoreIssue[],
 ): void {
   for (const item of items) {
-    const selected = field(item.raw, ["behaviors", "behavior"]);
+    const selected = field(item.raw, ["behavior", "behaviors"]);
     if (!selected) continue;
     const values = isUnknownArray(selected[1]) ? selected[1] : [selected[1]];
     values.forEach((behavior, index) => {
@@ -2363,17 +2377,6 @@ function parseItem(
   if (!isRecord(candidate.value)) return undefined;
   const source = candidate.source;
   const id = makeIdentifier(candidate.rawId, source.pack.namespace);
-  if (!isValidIdentifier(id)) {
-    issues.push(
-      issue(
-        source,
-        "invalid-item-id",
-        Messages.src.config.item.parser.text0085(id),
-        "error",
-      ),
-    );
-    return undefined;
-  }
   const [namespace, value] = splitIdentifier(id, source.pack.namespace);
   const raw = candidate.value;
   validateItemConfiguration(raw, source, options, issues);
@@ -2520,7 +2523,7 @@ function parseItem(
     typeof equipmentSettings?.slot === "string"
       ? equipmentSettings.slot.toLowerCase()
       : undefined;
-  const behaviorsField = field(raw, ["behaviors", "behavior"]);
+  const behaviorsField = field(raw, ["behavior", "behaviors"]);
   const clientBoundModelField = field(raw, [
     "client_bound_model",
     "client-bound-model",
@@ -2653,6 +2656,9 @@ export function buildItemIndex(
       ...(options.vanillaBlockStates === undefined
         ? {}
         : { vanillaBlockStates: options.vanillaBlockStates }),
+      ...(options.configVersion === undefined
+        ? {}
+        : { configVersion: options.configVersion }),
     },
   );
   issues.push(...blockIndex.issues);

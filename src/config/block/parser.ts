@@ -3,6 +3,7 @@ import {
   BLOCK_BEHAVIOR_TYPES,
   BLOCK_PROPERTY_ENUM_VALUES,
   BLOCK_PROPERTY_TYPES,
+  BLOCK_PUSH_REACTIONS,
   BLOCK_RENDERER_TYPES,
   BLOCK_ROOT_FIELDS,
   BLOCK_SETTING_FIELDS,
@@ -21,6 +22,7 @@ import {
   isValidRegistryDiscriminator,
   localRegistryDiscriminator,
 } from "../registry/discriminators.js";
+import { legacyKeyAccepted } from "../registry/legacyKeys.js";
 import type { SchemaField } from "../schema/types.js";
 import type { CoreIssue } from "../../diagnostics/model.js";
 import {
@@ -42,6 +44,8 @@ export interface BlockBuildOptions {
   readonly unknownExtensionSyntax?: "ignore" | "warning";
   readonly vanillaBlocks?: ReadonlySet<string>;
   readonly vanillaBlockStates?: VanillaBlockStateCatalog;
+  // 资源段没有版本标记, 用工作区 config.yml 声明的版本放宽旧键
+  readonly configVersion?: number;
 }
 
 export interface BlockBuildResult {
@@ -83,8 +87,11 @@ function field(
   raw: Readonly<Record<string, unknown>>,
   names: readonly string[],
 ): [string, unknown] | undefined {
-  for (const name of names)
-    if (Object.hasOwn(raw, name)) return [name, raw[name]];
+  for (const name of names) {
+    // 只能读自有属性: YAML 映射承载在普通对象上, 原型链上的同名键不是配置
+    const value = Object.hasOwn(raw, name) ? raw[name] : undefined;
+    if (value !== null && value !== undefined) return [name, value];
+  }
   return undefined;
 }
 
@@ -1022,6 +1029,7 @@ function validateModel(
       case "uvlock":
       case "weight":
       case "generation":
+      case "blueprint":
         break;
       default:
         issues.push(
@@ -1318,6 +1326,7 @@ function validateKnownFields(
   code: string,
   label: string,
   issues: CoreIssue[],
+  configVersion: number | undefined,
   extraKnown: readonly string[] = [],
 ): void {
   for (const key of Object.keys(value)) {
@@ -1325,13 +1334,16 @@ function validateKnownFields(
       blockSchemaFieldForName(key, fields) === undefined &&
       !extraKnown.includes(key)
     ) {
+      const fieldPath = pathName ? `${pathName}.${key}` : key;
+      // 文件声明版本早于该键被删除的版本时, 当时合法的旧键不算未知字段
+      if (legacyKeyAccepted(fieldPath, configVersion)) continue;
       issues.push(
         issue(
           source,
           code,
           Messages.src.config.block.parser.text0070(label, key),
           "warning",
-          pathName ? `${pathName}.${key}` : key,
+          fieldPath,
           true,
         ),
       );
@@ -1386,13 +1398,18 @@ function validateBehaviors(
           );
         return;
       }
+      const siblingValues = new Map<string, string>([["type", value.type]]);
+      const structure = field(value, ["structure"]);
+      const structureText = structure ? scalarText(structure[1]) : undefined;
+      if (structureText !== undefined)
+        siblingValues.set("structure", structureText);
       const fields = blockFieldsForContext({
         path: [
           "block",
           selected[0],
           ...(isUnknownArray(selected[1]) ? [String(index)] : []),
         ],
-        siblingValues: new Map([["type", value.type]]),
+        siblingValues,
       });
       validateKnownFields(
         value,
@@ -1402,6 +1419,7 @@ function validateBehaviors(
         "unknown-block-behavior-field",
         Messages.src.config.block.parser.text0073,
         issues,
+        options.configVersion,
         type === "on_liquid_block" && Object.hasOwn(value, "positions")
           ? ["positions"]
           : [],
@@ -1533,6 +1551,7 @@ function validateSettings(
       "unknown-block-setting-field",
       Messages.src.config.block.parser.text0080,
       issues,
+      options.configVersion,
     );
   }
   for (const key of [
@@ -1616,7 +1635,7 @@ function validateSettings(
   const pushReaction = field(raw.settings, ["push_reaction", "push-reaction"]);
   if (pushReaction) {
     const value = scalarText(pushReaction[1])?.toLowerCase();
-    const allowed = ["normal", "destroy", "block", "ignore", "push_only"];
+    const allowed: readonly string[] = BLOCK_PUSH_REACTIONS;
     if (value === undefined || !allowed.includes(value)) {
       issues.push(
         issue(
@@ -1643,17 +1662,6 @@ function parseBlock(
     return undefined;
   const source = candidate.source;
   const id = makeIdentifier(candidate.rawId, source.pack.namespace);
-  if (!isValidIdentifier(id)) {
-    issues.push(
-      issue(
-        source,
-        "invalid-block-id",
-        Messages.src.config.block.parser.text0084(id),
-        "error",
-      ),
-    );
-    return undefined;
-  }
   const [namespace, value] = splitIdentifier(id, source.pack.namespace);
   const raw = candidate.value;
   validateKnownFields(
@@ -1664,6 +1672,7 @@ function parseBlock(
     "unknown-block-field",
     Messages.src.config.block.parser.text0085,
     issues,
+    options.configVersion,
   );
   issues.push(
     ...validateSchemaNumberProviders({
@@ -1765,7 +1774,34 @@ function parseBlock(
   }
 
   if (properties.size === 0) {
-    validateVisual(state, source, stateKey, options, issues);
+    const appearanceField = field(state, ["appearance", "appearances"]);
+    if (
+      appearanceField &&
+      isRecord(appearanceField[1]) &&
+      Object.keys(appearanceField[1]).length > 0
+    ) {
+      const appearances = Object.entries(appearanceField[1]);
+      if (appearances.length > 1)
+        issues.push(
+          issue(
+            source,
+            "block-appearance-without-properties",
+            `无属性方块 ${id} 的 appearance(s) 最多只能包含一个外观`,
+            "error",
+            `${stateKey}.${appearanceField[0]}`,
+          ),
+        );
+      const [name, visual] = appearances[0]!;
+      validateVisual(
+        visual,
+        source,
+        `${stateKey}.${appearanceField[0]}.${name}`,
+        options,
+        issues,
+      );
+    } else {
+      validateVisual(state, source, stateKey, options, issues);
+    }
   } else {
     let appearances: readonly string[] = [];
     const appearanceField = field(state, ["appearance", "appearances"]);

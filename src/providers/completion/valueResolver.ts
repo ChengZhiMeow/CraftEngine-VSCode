@@ -355,6 +355,36 @@ export function addSchemaValues(
             Messages.src.providers.completion.valueResolver.text0029,
           );
         break;
+      case "custom-attribute":
+      case "attribute-operation":
+      case "equipment-set": {
+        const kind =
+          provider === "custom-attribute"
+            ? "attribute"
+            : provider === "attribute-operation"
+              ? "attribute-operation"
+              : "equipment-set";
+        for (const entry of workspaceIndex
+          .forDocument(document)
+          ?.complete(kind) ?? []) {
+          values.set(
+            entry.id,
+            `${entry.definition.source.pack.name} — ${field.detail}`,
+          );
+        }
+        if (provider === "attribute-operation") {
+          values.set("minecraft:add_value", "原版固定值加法运算");
+          values.set(
+            "minecraft:add_multiplied_base",
+            "按阶段基础值相乘后相加",
+          );
+          values.set(
+            "minecraft:add_multiplied_total",
+            "按当前总值连续相乘",
+          );
+        }
+        break;
+      }
       case "effect":
         for (const id of vanilla?.effects ?? [])
           values.set(
@@ -409,6 +439,13 @@ export function addSchemaValues(
           );
         break;
       case "entity-type":
+        for (const entry of workspaceIndex
+          .forDocument(document)
+          ?.complete("entity") ?? [])
+          values.set(
+            entry.id,
+            `${entry.definition.source.pack.name} — 自定义实体`,
+          );
         for (const id of vanilla?.entityTypes ?? [])
           values.set(
             id,

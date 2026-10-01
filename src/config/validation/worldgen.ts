@@ -1,5 +1,6 @@
 import {
   BLOCK_STATE_PROVIDER_TYPES,
+  CONFIGURED_FEATURE_TYPES,
   CRAFTENGINE_BLOCK_STATE_REGISTRY,
   worldgenFieldConstraint,
   worldgenListItemField,
@@ -8,6 +9,7 @@ import {
   type WorldgenSchemaContext,
 } from "../worldgen/schema.js";
 import type { ConfigurationCandidateInput } from "../model.js";
+import { CURRENT_CONFIG_VERSION } from "../registry/legacyKeys.js";
 import type { SchemaContext, SchemaField } from "../schema/types.js";
 import type { CoreIssue } from "../../diagnostics/model.js";
 import { isRecord, isUnknownArray } from "../../util/records.js";
@@ -40,6 +42,12 @@ import {
 } from "./shared.js";
 
 import { Messages } from "../../messages.js";
+// 候选表按层查表, 用 Set 避免每次线性扫描几十项
+const CONFIGURED_FEATURE_TYPE_SET = new Set<string>(CONFIGURED_FEATURE_TYPES);
+const BLOCK_STATE_PROVIDER_TYPE_SET = new Set<string>(
+  BLOCK_STATE_PROVIDER_TYPES,
+);
+
 function nearestFeatureType(
   root: unknown,
   path: readonly string[],
@@ -47,9 +55,22 @@ function nearestFeatureType(
   let current = root;
   let selected: string | undefined;
   const inspect = (value: unknown): void => {
-    if (!isRecord(value) || !Object.hasOwn(value, "config")) return;
-    // 内联功能配置离 config 最近, 缺少 type 时不能借用外层 type
-    selected = scalarText(value.type);
+    if (!isRecord(value)) return;
+    const type = scalarText(value.type);
+    const normalized =
+      type === undefined
+        ? undefined
+        : type.includes(":")
+          ? type
+          : `minecraft:${type}`;
+    if (
+      normalized !== undefined &&
+      CONFIGURED_FEATURE_TYPE_SET.has(normalized)
+    )
+      selected = type;
+    else if (Object.hasOwn(value, "config"))
+      // 内联功能配置离 config 最近, 缺少 type 时不能借用外层 type
+      selected = type;
   };
   inspect(current);
   for (const segment of path.slice(1)) {
@@ -67,7 +88,6 @@ function nearestProviderType(
 ): string | undefined {
   let current = root;
   let selected: string | undefined;
-  const known = new Set<string>(BLOCK_STATE_PROVIDER_TYPES);
   const inspect = (value: unknown): void => {
     if (!isRecord(value)) return;
     const type = scalarText(value.type);
@@ -77,7 +97,10 @@ function nearestProviderType(
         : type.includes(":")
           ? type
           : `minecraft:${type}`;
-    if (normalized !== undefined && known.has(normalized)) {
+    if (
+      normalized !== undefined &&
+      BLOCK_STATE_PROVIDER_TYPE_SET.has(normalized)
+    ) {
       selected = type;
       return;
     }
@@ -99,10 +122,11 @@ function worldgenBlockStateKind(
   path: readonly string[],
   customBlockIds: ReadonlySet<string>,
 ): WorldgenSchemaContext["blockStateKind"] {
-  if (compactPath(path).at(-1) !== "Properties") return undefined;
+  const tail = compactPath(path).at(-1);
+  if (tail !== "Properties" && tail !== "properties") return undefined;
   const owner = valueAt(root, path.slice(0, -1), 1);
   if (!isRecord(owner)) return "unknown";
-  const name = scalarText(owner.Name);
+  const name = scalarText(owner.Name ?? owner.id);
   if (!name) return "unknown";
   if (customBlockIds.has(name)) return "craftengine";
   return name.startsWith("minecraft:") ? "vanilla" : "unknown";
@@ -127,10 +151,20 @@ function worldgenFields(
     ...(providerType === undefined ? {} : { providerType }),
     ...(blockStateKind === undefined ? {} : { blockStateKind }),
   });
-  const base = withoutIdControlValidation(
-    suppressUnselectedVariantRequirements(schema?.fields ?? [], context),
-  );
   const node = valueAt(candidate.value, context.path, 1);
+  const schemaFields =
+    isRecord(node) &&
+    isRecord(node.config) &&
+    schema?.fields.some((field) => field.label === "config")
+      ? schema.fields.map((field) =>
+          field.label === "type" || field.label === "config"
+            ? field
+            : { ...field, required: false },
+        )
+      : (schema?.fields ?? []);
+  const base = withoutIdControlValidation(
+    suppressUnselectedVariantRequirements(schemaFields, context),
+  );
   if (schema?.additionalFields !== "dynamic-map" || !isRecord(node))
     return exactFields(base);
   return [
@@ -354,6 +388,7 @@ export function validateWorldgen(
   candidate: ConfigurationCandidateInput,
   section: string,
   customBlockIds: ReadonlySet<string>,
+  configVersion: number = CURRENT_CONFIG_VERSION,
 ): readonly CoreIssue[] {
   const kind = worldgenSectionKind(section);
   if (!kind) return [];
@@ -364,6 +399,7 @@ export function validateWorldgen(
     domainLabel: candidateLabel(candidate),
     fieldsForContext: (context) =>
       worldgenFields(candidate, section, context, customBlockIds),
+    configVersion,
     issueCodes: issueCodes(candidate.kind),
     unknownField: (context) => {
       const featureType = nearestFeatureType(candidate.value, context.path);

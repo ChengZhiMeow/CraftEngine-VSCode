@@ -1,19 +1,41 @@
-export function compareMinecraftVersions(left: string, right: string): number {
-  const a = left.match(/\d+/gu)?.map(Number) ?? [0];
-  const b = right.match(/\d+/gu)?.map(Number) ?? [0];
-  const length = Math.max(a.length, b.length);
-  for (let index = 0; index < length; index += 1) {
-    const difference = (a[index] ?? 0) - (b[index] ?? 0);
-    if (difference !== 0) {
-      return Math.sign(difference);
+  // 与 CE 的 VersionHelper.parseVersionToInteger 一致:
+  // 只取前 3 段数字, 第二段之后的第三个点号起全部丢弃, 再编码成整数
+function versionToInteger(source: string): number {
+  let major = 0;
+  let minor = 0;
+  let patch = 0;
+  let current = 0;
+  let part = 0;
+  for (const character of source) {
+    if (character >= "0" && character <= "9") {
+      current = current * 10 + (character.charCodeAt(0) - 48);
+      continue;
     }
+    if (character !== ".") continue;
+    if (part === 0) major = current;
+    else if (part === 1) minor = current;
+    part += 1;
+    current = 0;
+    if (part > 2) break;
   }
-  return 0;
+  // CE 在 break 之后仍按 part 收尾, 此时被跳过的第三段记录的是 0
+  if (part === 0) major = current;
+  else if (part === 1) minor = current;
+  else if (part === 2) patch = current;
+  return major * 10000 + minor * 100 + patch;
 }
+
+export function compareMinecraftVersions(left: string, right: string): number {
+  return Math.sign(versionToInteger(left) - versionToInteger(right));
+}
+
+  // CraftEngine 26.9.2 声明 latest_supported_version=26.3, 配置里的 $$ 版本选择器
+  // 按服务端 MC 版本求值, 因此扩展默认模拟 26.3
+export const DEFAULT_MINECRAFT_VERSION = "26.3";
 
 export function matchesMinecraftVersion(
   specification: string,
-  target = "26.2",
+  target = DEFAULT_MINECRAFT_VERSION,
 ): boolean {
   const spec = specification.trim();
   if (spec === "fallback") {

@@ -5,6 +5,7 @@ import {
   findCraftEngineTemplatePlaceholders,
   hasCraftEngineTemplatePlaceholder,
 } from "../../config/template/stringParser.js";
+import { isExpressionSyntax } from "../../config/expression/evaluator.js";
 
 export { hasCraftEngineTemplatePlaceholder } from "../../config/template/stringParser.js";
 
@@ -30,7 +31,8 @@ export type MiniMessageReferenceKind =
   | "language"
   | "server-language"
   | "global"
-  | "image";
+  | "image"
+  | "attribute";
 
 export interface MiniMessageReference {
   readonly kind: MiniMessageReferenceKind;
@@ -58,6 +60,7 @@ export type MiniMessageArgumentKind =
   | "language-key"
   | "server-language-key"
   | "global-id"
+  | "custom-attribute-id"
   | "image-id"
   | "integer"
   | "atlas-coordinate-or-format"
@@ -154,6 +157,10 @@ export const CRAFTENGINE_MINIMESSAGE_TAGS = [
   "rel_papi",
   "viewer_papi",
   "viewer_arg",
+  "var",
+  "random",
+  "attacker_attr",
+  "victim_attr",
   "background",
   "bubble",
   "nameplate",
@@ -245,6 +252,11 @@ function argumentKind(tagName: string, index: number): MiniMessageArgumentKind {
     case "arg":
     case "viewer_arg":
       return index === 0 ? "context-key" : "component";
+    case "var":
+      return index === 0 ? "context-key" : "value";
+    case "attacker_attr":
+    case "victim_attr":
+      return index === 0 ? "custom-attribute-id" : "value";
     case "papi":
     case "rel_papi":
     case "viewer_papi":
@@ -346,6 +358,16 @@ function referenceFor(tag: MiniMessageTag): MiniMessageReference | undefined {
       }
       break;
     }
+    case "attacker_attr":
+    case "victim_attr": {
+      kind = "attribute";
+      const second = tag.arguments[1];
+      if (second) {
+        id = `${first.value}:${second.value}`;
+        range = { start: first.range.start, end: second.range.end };
+      }
+      break;
+    }
     default:
       return undefined;
   }
@@ -401,6 +423,10 @@ function validateTag(tag: MiniMessageTag): readonly MiniMessageIssue[] {
     case "rel_papi":
     case "viewer_papi":
     case "viewer_arg":
+    case "var":
+    case "random":
+    case "attacker_attr":
+    case "victim_attr":
       minimum = 1;
       break;
     case "lang_or":
@@ -441,6 +467,13 @@ function validateTag(tag: MiniMessageTag): readonly MiniMessageIssue[] {
     case "rel_papi":
     case "viewer_papi":
     case "viewer_arg":
+      maximum = 2;
+      break;
+    case "var":
+      maximum = 1;
+      break;
+    case "attacker_attr":
+    case "victim_attr":
       maximum = 2;
       break;
     case "image":
@@ -489,6 +522,21 @@ function validateTag(tag: MiniMessageTag): readonly MiniMessageIssue[] {
           : [],
       ),
     );
+  }
+  if (tag.name === "expr") {
+    const expression = tag.arguments[1];
+    if (
+      expression &&
+      !expression.dynamic &&
+      !isExpressionSyntax(expression.value)
+    )
+      issues.push(
+        warning(
+          "minimessage-invalid-expression",
+          "expr 标签中的内容不是有效的 Sparrow Expression",
+          expression.range,
+        ),
+      );
   }
   return issues;
 }

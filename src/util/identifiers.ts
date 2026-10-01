@@ -4,7 +4,10 @@ export function splitIdentifier(
 ): [namespace: string, value: string] {
   const separator = identifier.indexOf(":");
   if (separator < 0) return [defaultNamespace, identifier];
-  return [identifier.slice(0, separator), identifier.slice(separator + 1)];
+  return [
+    separator === 0 ? defaultNamespace : identifier.slice(0, separator),
+    identifier.slice(separator + 1),
+  ];
 }
 
 export function makeIdentifier(
@@ -18,8 +21,7 @@ export function makeIdentifier(
 export function isValidIdentifier(identifier: string): boolean {
   const [namespace, value] = splitIdentifier(identifier, "minecraft");
   return (
-    /^[a-z0-9_.-]+$/u.test(namespace) &&
-    /^[a-z0-9_.\-/]+$/u.test(value) &&
-    value.length > 0
+    /^[a-z0-9_.-]*$/u.test(namespace) &&
+    /^[a-z0-9_.\-/]*$/u.test(value)
   );
 }

@@ -45,6 +45,7 @@ export const EQUIPMENT_LAYER_TYPES = [
   "skeleton_horse_saddle",
   "zombie_horse_saddle",
   "happy_ghast_body",
+  "humanoid_baby",
 ] as const;
 
 export type EquipmentLayerType = (typeof EQUIPMENT_LAYER_TYPES)[number];
@@ -517,16 +518,6 @@ function parseEquipment(
   if (candidate.kind !== "equipment" || !isRecord(candidate.value))
     return undefined;
   const id = makeIdentifier(candidate.rawId, candidate.source.pack.namespace);
-  if (!isValidIdentifier(id)) {
-    issues.push({
-      code: "invalid-equipment-id",
-      message: Messages.src.config.equipment.parser.text0013(id),
-      severity: "error",
-      uri: candidate.source.uri,
-      range: candidate.source.idRange,
-    });
-    return undefined;
-  }
   const [namespace, value] = splitIdentifier(
     id,
     candidate.source.pack.namespace,

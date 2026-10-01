@@ -1,4 +1,5 @@
 import { Messages } from "../../messages.js";
+import { configKeys } from "../../util/configKeys.js";
 
 export type CraftEngineSectionDomain =
   | "template"
@@ -15,7 +16,10 @@ export type CraftEngineSectionDomain =
   | "resource-pack"
   | "worldgen"
   | "painting"
-  | "advancement";
+  | "advancement"
+  | "entity"
+  | "attribute"
+  | "atlas";
 
 export type CraftEngineSectionParserKind =
   | "id-section"
@@ -40,12 +44,18 @@ export type CraftEngineCanonicalSectionType =
   | "sounds"
   | "jukebox-songs"
   | "loot"
-  | "vanilla-loots"
+  | "loot-sources"
   | "skip-optimization"
   | "configured-feature"
   | "placed-feature"
   | "paintings"
-  | "advancements";
+  | "advancements"
+  | "entities"
+  | "attributes"
+  | "attribute-operations"
+  | "equipment-sets"
+  | "damage-rules"
+  | "atlases";
 
 export interface CraftEngineSectionFamily {
   readonly canonical: CraftEngineCanonicalSectionType;
@@ -55,8 +65,6 @@ export interface CraftEngineSectionFamily {
   readonly description: string;
   readonly idSection: boolean;
   readonly noOp: boolean;
-  readonly dependencies: readonly CraftEngineCanonicalSectionType[];
-  readonly order: number;
 }
 
 export interface CraftEngineRootSectionCompletion {
@@ -67,7 +75,6 @@ export interface CraftEngineRootSectionCompletion {
   readonly kind: CraftEngineSectionParserKind;
   readonly alias: boolean;
   readonly noOp: boolean;
-  readonly order: number;
 }
 
 export const CRAFTENGINE_SECTION_FAMILIES = [
@@ -79,8 +86,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0001,
     idSection: false,
     noOp: false,
-    dependencies: [],
-    order: 1,
   },
   {
     canonical: "config-factory",
@@ -90,8 +95,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0002,
     idSection: false,
     noOp: false,
-    dependencies: ["templates"],
-    order: 2,
   },
   {
     canonical: "global-variables",
@@ -101,8 +104,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0003,
     idSection: false,
     noOp: false,
-    dependencies: [],
-    order: 3,
   },
   {
     canonical: "images",
@@ -112,8 +113,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0004,
     idSection: true,
     noOp: false,
-    dependencies: [],
-    order: 4,
   },
   {
     canonical: "emojis",
@@ -123,8 +122,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0005,
     idSection: true,
     noOp: false,
-    dependencies: ["images"],
-    order: 5,
   },
   {
     canonical: "equipments",
@@ -134,8 +131,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0006,
     idSection: true,
     noOp: false,
-    dependencies: [],
-    order: 6,
   },
   {
     canonical: "items",
@@ -145,8 +140,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0007,
     idSection: true,
     noOp: false,
-    dependencies: ["equipments"],
-    order: 7,
   },
   {
     canonical: "furniture",
@@ -156,8 +149,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0008,
     idSection: true,
     noOp: false,
-    dependencies: ["items"],
-    order: 8,
   },
   {
     canonical: "block-state-mappings",
@@ -171,8 +162,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0009,
     idSection: false,
     noOp: false,
-    dependencies: [],
-    order: 9,
   },
   {
     canonical: "blocks",
@@ -182,8 +171,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0010,
     idSection: true,
     noOp: false,
-    dependencies: ["block-state-mappings", "items"],
-    order: 10,
   },
   {
     canonical: "recipes",
@@ -193,8 +180,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0011,
     idSection: true,
     noOp: false,
-    dependencies: ["items"],
-    order: 11,
   },
   {
     canonical: "categories",
@@ -204,8 +189,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0012,
     idSection: true,
     noOp: false,
-    dependencies: ["items"],
-    order: 12,
   },
   {
     canonical: "translations",
@@ -221,8 +204,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0013,
     idSection: false,
     noOp: false,
-    dependencies: [],
-    order: 13,
   },
   {
     canonical: "lang",
@@ -232,8 +213,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0014,
     idSection: false,
     noOp: false,
-    dependencies: ["images"],
-    order: 14,
   },
   {
     canonical: "sounds",
@@ -243,8 +222,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0015,
     idSection: true,
     noOp: false,
-    dependencies: [],
-    order: 15,
   },
   {
     canonical: "jukebox-songs",
@@ -254,8 +231,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0016,
     idSection: true,
     noOp: false,
-    dependencies: ["sounds"],
-    order: 16,
   },
   {
     canonical: "loot",
@@ -265,19 +240,17 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0017,
     idSection: true,
     noOp: false,
-    dependencies: [],
-    order: 17,
   },
   {
-    canonical: "vanilla-loots",
-    aliases: ["vanilla-loot", "vanilla_loots", "vanilla_loot"],
+    canonical: "loot-sources",
+    aliases: configKeys("loot_source(s)|vanilla_loot(s)").filter(
+      (key) => key !== "loot-sources",
+    ),
     domain: "loot",
     kind: "id-section",
     description: Messages.src.config.registry.sectionRegistry.text0018,
     idSection: true,
     noOp: false,
-    dependencies: ["loot"],
-    order: 18,
   },
   {
     canonical: "skip-optimization",
@@ -287,8 +260,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0019,
     idSection: false,
     noOp: false,
-    dependencies: [],
-    order: 19,
   },
   {
     canonical: "configured-feature",
@@ -302,8 +273,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0020,
     idSection: true,
     noOp: false,
-    dependencies: ["blocks"],
-    order: 20,
   },
   {
     canonical: "placed-feature",
@@ -313,8 +282,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0021,
     idSection: true,
     noOp: false,
-    dependencies: ["configured-feature"],
-    order: 21,
   },
   {
     canonical: "paintings",
@@ -324,8 +291,6 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0022,
     idSection: true,
     noOp: false,
-    dependencies: [],
-    order: 22,
   },
   {
     canonical: "advancements",
@@ -335,8 +300,66 @@ export const CRAFTENGINE_SECTION_FAMILIES = [
     description: Messages.src.config.registry.sectionRegistry.text0023,
     idSection: true,
     noOp: true,
-    dependencies: ["items", "blocks"],
-    order: 23,
+  },
+  {
+    canonical: "entities",
+    aliases: ["entity"],
+    domain: "entity",
+    kind: "id-section",
+    description: Messages.src.config.registry.sectionRegistry.text0024,
+    idSection: true,
+    noOp: false,
+  },
+  {
+    canonical: "attribute-operations",
+    aliases: configKeys("attribute_operation(s)").filter(
+      (key) => key !== "attribute-operations",
+    ),
+    domain: "attribute",
+    kind: "id-section",
+    description: Messages.src.config.registry.sectionRegistry.text0025,
+    idSection: true,
+    noOp: false,
+  },
+  {
+    canonical: "attributes",
+    aliases: ["attribute"],
+    domain: "attribute",
+    kind: "id-section",
+    description: Messages.src.config.registry.sectionRegistry.text0026,
+    idSection: true,
+    noOp: false,
+  },
+  {
+    canonical: "equipment-sets",
+    aliases: configKeys("equipment_set(s)").filter(
+      (key) => key !== "equipment-sets",
+    ),
+    domain: "attribute",
+    kind: "id-section",
+    description: Messages.src.config.registry.sectionRegistry.text0027,
+    idSection: true,
+    noOp: false,
+  },
+  {
+    canonical: "damage-rules",
+    aliases: configKeys("damage_rule(s)").filter(
+      (key) => key !== "damage-rules",
+    ),
+    domain: "attribute",
+    kind: "section",
+    description: Messages.src.config.registry.sectionRegistry.text0028,
+    idSection: false,
+    noOp: false,
+  },
+  {
+    canonical: "atlases",
+    aliases: ["atlas"],
+    domain: "atlas",
+    kind: "id-section",
+    description: Messages.src.config.registry.sectionRegistry.text0029,
+    idSection: true,
+    noOp: false,
   },
 ] as const satisfies readonly CraftEngineSectionFamily[];
 
@@ -359,7 +382,6 @@ export const CRAFTENGINE_ROOT_SECTION_COMPLETIONS: readonly CraftEngineRootSecti
       kind: family.kind,
       alias: sectionType !== family.canonical,
       noOp: family.noOp,
-      order: family.order,
     })),
   );
 

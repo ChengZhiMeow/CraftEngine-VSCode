@@ -4,11 +4,14 @@ import {
   miscResourceListItemField,
   resolveMiscResourceSection,
 } from "../resource/schema.js";
+import { MISC_OPAQUE_SECTIONS } from "./resource.js";
+import { CURRENT_CONFIG_VERSION } from "../registry/legacyKeys.js";
 import type { SchemaContext, SchemaField } from "../schema/types.js";
 import type { CoreIssue } from "../../diagnostics/model.js";
 import { isRecord, isUnknownArray } from "../../util/records.js";
 import { validateSchema } from "./schema.js";
 import { Messages } from "../../messages.js";
+import { isExpressionSyntax } from "../expression/evaluator.js";
 import {
   customIssue,
   dynamicKey,
@@ -17,6 +20,7 @@ import {
   issueCodes,
   listItemField,
   oneProblem,
+  originalSemantic,
   problem,
   type OpaqueSectionValidationInput,
 } from "./shared.js";
@@ -73,12 +77,28 @@ function validateSkipValues(
 
 export function validateOpaqueSection(
   section: OpaqueSectionValidationInput,
+  configVersion: number = CURRENT_CONFIG_VERSION,
 ): readonly CoreIssue[] {
   const resolved = resolveMiscResourceSection(section.sectionType);
-  if (resolved !== "block-state-mapping" && resolved !== "skip-optimization")
-    return [];
+  // 兜底判断: 调用方按白名单收集, 但校验器本身仍要拒绝其他 section
+  if (resolved === undefined || !MISC_OPAQUE_SECTIONS.has(resolved)) return [];
   const fieldsForContext = (context: SchemaContext): readonly SchemaField[] => {
-    if (resolved !== "block-state-mapping" || context.path.length !== 0)
+    if (resolved === "damage-rules" && context.path.length === 0) {
+      return (isRecord(section.value) ? Object.keys(section.value) : []).map(
+        (key) =>
+          dynamicValidationField(
+            {
+              label: key,
+              semantic: key,
+              aliases: [],
+              detail: "伤害来源对应的规则列表",
+              snippet: `${key}:\n  - formula: \${0:damage}`,
+            },
+            key,
+          ),
+      );
+    }
+    if (resolved !== "block-state-mappings" || context.path.length !== 0)
       return exactFields(
         miscResourceFieldsForContext(section.sectionType, context),
       );
@@ -106,13 +126,18 @@ export function validateOpaqueSection(
       value: section.value,
       source: section.source,
       domainLabel:
-        resolved === "block-state-mapping"
+        resolved === "block-state-mappings"
           ? Messages.src.config.validation.opaque.text0004
-          : Messages.src.config.validation.opaque.text0005,
+          : resolved === "damage-rules"
+            ? "伤害规则"
+            : Messages.src.config.validation.opaque.text0005,
       fieldsForContext,
+      configVersion,
       issueCodes: issueCodes(resolved),
       unknownField: (context) => {
         if (resolved === "skip-optimization") return "skip";
+        if (resolved === "damage-rules" && context.path.length === 0)
+          return "open";
         if (context.path.length === 0) return "open";
         return context.fields.length === 0 ? "skip" : "diagnose";
       },
@@ -122,7 +147,7 @@ export function validateOpaqueSection(
         ),
       constraints: (context) => {
         if (
-          resolved === "block-state-mapping" &&
+          resolved === "block-state-mappings" &&
           dynamicKey(context.field) !== undefined &&
           (typeof context.value !== "string" || context.value.trim() === "")
         ) {
@@ -133,11 +158,37 @@ export function validateOpaqueSection(
             ),
           );
         }
+        if (resolved === "damage-rules" && typeof context.value === "string") {
+          const semantic = originalSemantic(context.field);
+          const expressionField =
+            semantic === "expression" ||
+            semantic === "formula" ||
+            (dynamicKey(context.field) !== undefined &&
+              context.path.some((part) => part === "parts"));
+          if (
+            expressionField &&
+            !isExpressionSyntax(context.value, {
+              damage: 0,
+              is_critical: 0,
+              is_sweep: 0,
+              attack_strength: 0,
+              shoot_force: 0,
+              is_attack_ready: 0,
+            })
+          )
+            return oneProblem(
+              problem(
+                "invalid-damage-formula-expression",
+                `伤害规则 ${context.fieldPath} 不是有效的 Sparrow Expression`,
+              ),
+            );
+        }
         return undefined;
       },
     }),
   ];
-  if (resolved !== "block-state-mapping") {
+  if (resolved !== "block-state-mappings") {
+    if (resolved === "damage-rules") return issues;
     validateSkipValues(section, issues);
     return issues;
   }

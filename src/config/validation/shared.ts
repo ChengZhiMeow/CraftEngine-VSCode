@@ -1,6 +1,10 @@
 import { parseCraftEngineColor } from "../value/colors.js";
 import type { ConfigurationCandidateInput } from "../model.js";
-import type { SchemaContext, SchemaField } from "../schema/types.js";
+import {
+  schemaFieldForName,
+  type SchemaContext,
+  type SchemaField,
+} from "../schema/types.js";
 import type { CoreIssue } from "../../diagnostics/model.js";
 import { isValidIdentifier, makeIdentifier } from "../../util/identifiers.js";
 import {
@@ -38,6 +42,11 @@ export type ValidatedCandidateKind = Extract<
   | "configured-feature"
   | "placed-feature"
   | "advancement"
+  | "entity"
+  | "attribute"
+  | "attribute-operation"
+  | "equipment-set"
+  | "atlas"
 >;
 
 export type DeepCandidateKind = Extract<
@@ -202,12 +211,7 @@ export function registeredMappingFields(
       result.push(dynamicValidationField(selected, key));
       continue;
     }
-    if (
-      acceptExternal &&
-      isValidIdentifier(
-        makeIdentifier(stripKeySuffix(key).replaceAll("-", "_"), "craftengine"),
-      )
-    ) {
+    if (acceptExternal) {
       result.push(
         dynamicValidationField(
           genericField(key, Messages.src.config.validation.shared.text0001),
@@ -227,16 +231,12 @@ export function resolvedRegisteredFields(
   return Object.keys(node).flatMap((key) => {
     const selected = resolver(key);
     if (selected) return [dynamicValidationField(selected, key)];
-    return isValidIdentifier(
-      makeIdentifier(stripKeySuffix(key).replaceAll("-", "_"), "craftengine"),
-    )
-      ? [
+    return [
           dynamicValidationField(
             genericField(key, Messages.src.config.validation.shared.text0002),
             key,
           ),
-        ]
-      : [];
+        ];
   });
 }
 
@@ -278,9 +278,7 @@ export function exactFieldForName(
   name: string,
   fields: readonly SchemaField[],
 ): SchemaField | undefined {
-  return fields.find(
-    (field) => field.label === name || field.aliases.includes(name),
-  );
+  return schemaFieldForName(name, fields);
 }
 
 export function onlyTemplateControlFields(
@@ -490,6 +488,16 @@ export function candidateLabel(candidate: ConfigurationCandidateInput): string {
       return Messages.src.config.validation.shared.text0010(candidate.rawId);
     case "advancement":
       return Messages.src.config.validation.shared.text0011(candidate.rawId);
+    case "entity":
+      return `实体 ${candidate.rawId}`;
+    case "attribute":
+      return `属性 ${candidate.rawId}`;
+    case "attribute-operation":
+      return `属性运算 ${candidate.rawId}`;
+    case "equipment-set":
+      return `装备套装 ${candidate.rawId}`;
+    case "atlas":
+      return `Atlas ${candidate.rawId}`;
     default:
       return Messages.src.config.validation.shared.text0012(
         candidate.kind,

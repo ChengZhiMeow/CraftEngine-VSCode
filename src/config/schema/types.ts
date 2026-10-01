@@ -20,6 +20,9 @@ export type SchemaValueProvider =
   | "texture"
   | "component"
   | "attribute"
+  | "custom-attribute"
+  | "attribute-operation"
+  | "equipment-set"
   | "enchantment"
   | "effect"
   | "sound"
@@ -69,7 +72,19 @@ export function schemaFieldForName(
   name: string,
   fields: readonly SchemaField[],
 ): SchemaField | undefined {
-  return fields.find(
+  const exact = fields.find(
     (candidate) => candidate.label === name || candidate.aliases.includes(name),
+  );
+  if (exact) return exact;
+
+  // ConfigKeys.of(...) 会为所有 snake_case 键自动注册 kebab-case 写法。
+  // Schema 统一在这里做同样的匹配，避免每一个字段重复维护机械别名。
+  const normalized = name.replaceAll("-", "_");
+  return fields.find(
+    (candidate) =>
+      candidate.label.replaceAll("-", "_") === normalized ||
+      candidate.aliases.some(
+        (alias) => alias.replaceAll("-", "_") === normalized,
+      ),
   );
 }

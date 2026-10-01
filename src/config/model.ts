@@ -32,6 +32,10 @@ export interface PackSource {
   readonly configurationRoot: string;
   readonly resourcePackRoot: string;
   readonly baseResourcePackRoot: string;
+  // blueprint 与 script 目录和 resourcePackRoot 一样只记录路径, 目录是否存在
+  // 由查找方按文件判断; 单文件 / 独立翻译这类包可以不记录
+  readonly blueprintRoot?: string;
+  readonly scriptRoot?: string;
   readonly loadOrder: number;
 }
 
@@ -62,7 +66,12 @@ export type ResourceKind =
   | "painting"
   | "configured-feature"
   | "placed-feature"
-  | "advancement";
+  | "advancement"
+  | "entity"
+  | "attribute"
+  | "attribute-operation"
+  | "equipment-set"
+  | "atlas";
 
 export interface ConfigurationSource {
   readonly uri: string;

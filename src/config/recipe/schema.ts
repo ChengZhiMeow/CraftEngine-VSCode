@@ -277,8 +277,7 @@ export function resolveRecipeDiscriminator(
   }
   const raw =
     registry === "condition" && value.startsWith("!") ? value.slice(1) : value;
-  if (!raw || !/^[a-z0-9_.\-/]+(?::[a-z0-9_.\-/]+)?$/u.test(raw))
-    return { kind: "invalid" };
+  if (!raw) return { kind: "invalid" };
 
   if (values.includes(raw)) return { kind: "known", name: raw };
   if (!isRegistryDiscriminatorSyntax(raw, namespace))
@@ -487,7 +486,7 @@ const RECIPE_FIELDS = new Map<string, readonly SchemaField[]>([
       CONDITIONS,
     ],
   ],
-  ["stonecutting", [SINGLE_INGREDIENT, RESULT, GROUP]],
+  ["stonecutting", [SINGLE_INGREDIENT, RESULT, GROUP, CONDITIONS, FUNCTIONS]],
   [
     "smithing_transform",
     [
@@ -538,12 +537,24 @@ const RECIPE_FIELDS = new Map<string, readonly SchemaField[]>([
   [
     "brewing",
     [
-      SINGLE_INGREDIENT,
+      // CE: ingredient(s)|reagent / result|output / container|input
+      field("ingredient", Messages.src.config.recipe.schema.text0051, {
+        aliases: ["ingredients", "reagent"],
+        valueProvider: "item-id",
+        required: true,
+        snippet: "ingredient: ${0}",
+      }),
       field("container", Messages.src.config.recipe.schema.text0067, {
+        aliases: ["input"],
         valueProvider: "item-id",
         required: true,
       }),
-      RESULT,
+      field("result", Messages.src.config.recipe.schema.text0046, {
+        aliases: ["output"],
+        valueProvider: "item-id",
+        required: true,
+        snippet: "result:\n  id: ${0}",
+      }),
     ],
   ],
 ]);

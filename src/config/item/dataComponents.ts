@@ -33,6 +33,11 @@ export const DATA_COMPONENT_DEFINITIONS: readonly DataComponentDefinition[] = [
     kind: "scalar",
   },
   {
+    id: "minecraft:attack_animation",
+    detail: "26.3 新增的攻击动画组件",
+    kind: "opaque",
+  },
+  {
     id: "minecraft:attack_range",
     detail: Messages.src.config.item.dataComponents.text0002,
     kind: "mapping",
@@ -73,6 +78,11 @@ export const DATA_COMPONENT_DEFINITIONS: readonly DataComponentDefinition[] = [
     kind: "mapping",
   },
   {
+    id: "minecraft:block_transformer",
+    detail: "方块外观转换规则",
+    kind: "opaque",
+  },
+  {
     id: "minecraft:blocks_attacks",
     detail: Messages.src.config.item.dataComponents.text0010,
     kind: "mapping",
@@ -80,6 +90,11 @@ export const DATA_COMPONENT_DEFINITIONS: readonly DataComponentDefinition[] = [
   {
     id: "minecraft:break_sound",
     detail: Messages.src.config.item.dataComponents.text0011,
+    kind: "scalar",
+  },
+  {
+    id: "minecraft:brewing_fuel",
+    detail: "作为酿造燃料可提供的酿造次数",
     kind: "scalar",
   },
   {
@@ -133,6 +148,11 @@ export const DATA_COMPONENT_DEFINITIONS: readonly DataComponentDefinition[] = [
     kind: "scalar",
   },
   {
+    id: "minecraft:compostable",
+    detail: "放入堆肥桶时的堆肥成功概率",
+    kind: "scalar",
+  },
+  {
     id: "minecraft:consumable",
     detail: Messages.src.config.item.dataComponents.text0022,
     kind: "mapping",
@@ -148,6 +168,11 @@ export const DATA_COMPONENT_DEFINITIONS: readonly DataComponentDefinition[] = [
     kind: "mapping",
   },
   {
+    id: "minecraft:cooking_fuel",
+    detail: "作为熔炉燃料可燃烧的时间",
+    kind: "scalar",
+  },
+  {
     id: "minecraft:cow/sound_variant",
     detail: Messages.src.config.item.dataComponents.text0025,
     kind: "scalar",
@@ -161,6 +186,11 @@ export const DATA_COMPONENT_DEFINITIONS: readonly DataComponentDefinition[] = [
     id: "minecraft:creative_slot_lock",
     detail: Messages.src.config.item.dataComponents.text0027,
     kind: "unit",
+  },
+  {
+    id: "minecraft:cushion/color",
+    detail: "坐垫颜色（染料色）",
+    kind: "scalar",
   },
   {
     id: "minecraft:custom_data",
@@ -278,6 +308,11 @@ export const DATA_COMPONENT_DEFINITIONS: readonly DataComponentDefinition[] = [
     kind: "scalar",
   },
   {
+    id: "minecraft:interact_animation",
+    detail: "物品的交互播放动画",
+    kind: "opaque",
+  },
+  {
     id: "minecraft:intangible_projectile",
     detail: Messages.src.config.item.dataComponents.text0051,
     kind: "unit",
@@ -358,6 +393,11 @@ export const DATA_COMPONENT_DEFINITIONS: readonly DataComponentDefinition[] = [
     kind: "scalar",
   },
   {
+    id: "minecraft:mob_visibility",
+    detail: "该物品在生物身上的可见性",
+    kind: "opaque",
+  },
+  {
     id: "minecraft:mooshroom/variant",
     detail: Messages.src.config.item.dataComponents.text0067,
     kind: "scalar",
@@ -423,6 +463,11 @@ export const DATA_COMPONENT_DEFINITIONS: readonly DataComponentDefinition[] = [
     kind: "scalar",
   },
   {
+    id: "minecraft:provides_pottery_pattern",
+    detail: "提供的陶片图案 ID",
+    kind: "scalar",
+  },
+  {
     id: "minecraft:provides_trim_material",
     detail: Messages.src.config.item.dataComponents.text0080,
     kind: "scalar",
@@ -466,6 +511,16 @@ export const DATA_COMPONENT_DEFINITIONS: readonly DataComponentDefinition[] = [
     id: "minecraft:shulker/color",
     detail: Messages.src.config.item.dataComponents.text0088,
     kind: "scalar",
+  },
+  {
+    id: "minecraft:sign_text_back",
+    detail: "告示牌背面的文本内容",
+    kind: "opaque",
+  },
+  {
+    id: "minecraft:sign_text_front",
+    detail: "告示牌正面的文本内容",
+    kind: "opaque",
   },
   {
     id: "minecraft:stored_enchantments",
@@ -543,9 +598,19 @@ export const DATA_COMPONENT_DEFINITIONS: readonly DataComponentDefinition[] = [
     kind: "mapping",
   },
   {
+    id: "minecraft:villager_food",
+    detail: "作为村民食物提供的数值",
+    kind: "opaque",
+  },
+  {
     id: "minecraft:villager/variant",
     detail: Messages.src.config.item.dataComponents.text0104,
     kind: "scalar",
+  },
+  {
+    id: "minecraft:waxed",
+    detail: "标记物品或方块为已打蜡",
+    kind: "opaque",
   },
   {
     id: "minecraft:weapon",

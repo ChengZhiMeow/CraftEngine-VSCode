@@ -14,4 +14,7 @@ export interface JukeboxSongDefinition {
   readonly sound: string;
   readonly description: string;
   readonly length: number;
+  // CE: JukeboxSong(range, comparatorOutput), 默认 32/15
+  readonly range: number;
+  readonly comparatorOutput: number;
 }

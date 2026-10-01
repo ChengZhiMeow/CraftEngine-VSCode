@@ -176,9 +176,11 @@ export function resourceFilesForRoot(
   resourcesRoot: string,
   kind?: ResourceFileKind,
 ): readonly ResourceFile[] {
+  // 循环不变量提到遍历外: 原本每条目都要重算两次 canonicalPath
+  const canonicalRoot = canonicalPath(resourcesRoot);
   return (
     kind === undefined ? catalog.files : (catalog.byKind.get(kind) ?? [])
-  ).filter((file) => samePath(file.pack.resourcesRoot, resourcesRoot));
+  ).filter((file) => canonicalPath(file.pack.resourcesRoot) === canonicalRoot);
 }
 
 export function resourceCandidates(

@@ -94,6 +94,8 @@ export const LOOT_ENTRY_TYPES = [
   "exp",
   "furniture_item",
   "empty",
+  "function",
+  "loot_table",
 ] as const;
 export const LOOT_ENTRY_TYPE_DETAILS: Readonly<
   Record<(typeof LOOT_ENTRY_TYPES)[number], string>
@@ -104,6 +106,8 @@ export const LOOT_ENTRY_TYPE_DETAILS: Readonly<
   exp: Messages.src.config.loot.schema.text0006,
   furniture_item: Messages.src.config.loot.schema.text0007,
   empty: Messages.src.config.loot.schema.text0008,
+  function: "执行一个通用函数, 用 run 指定",
+  loot_table: "引用另一个战利品表",
 };
 
 export const LOOT_FUNCTION_TYPES = [
@@ -142,12 +146,16 @@ const ENTRY_COMMON: readonly SchemaField[] = [
     valueDetails: LOOT_ENTRY_TYPE_DETAILS,
     required: true,
   }),
-  list("conditions", Messages.src.config.loot.schema.text0018),
+  list("conditions", Messages.src.config.loot.schema.text0018, ["condition"]),
 ];
-const SINGLE_ENTRY_COMMON: readonly SchemaField[] = [
+// CE 的 empty 只读 condition(s)/weight/quality, 不接受 functions
+const EMPTY_ENTRY_COMMON: readonly SchemaField[] = [
   ...ENTRY_COMMON,
   number("weight", Messages.src.config.loot.schema.text0019),
   number("quality", Messages.src.config.loot.schema.text0020),
+];
+const SINGLE_ENTRY_COMMON: readonly SchemaField[] = [
+  ...EMPTY_ENTRY_COMMON,
   list("functions", Messages.src.config.loot.schema.text0021),
 ];
 const ENTRY_FIELDS = new Map<string, readonly SchemaField[]>([
@@ -186,7 +194,45 @@ const ENTRY_FIELDS = new Map<string, readonly SchemaField[]>([
     ],
   ],
   ["empty", []],
+  [
+    "function",
+    [
+      field("run", "要执行的通用函数", {
+        required: true,
+        snippet: "run:\n  type: ${0}",
+      }),
+    ],
+  ],
+  [
+    "loot_table",
+    [
+      field("id", "引用的战利品表 ID", {
+        aliases: ["table", "name"],
+        valueProvider: "loot-id",
+        required: true,
+      }),
+    ],
+  ],
 ]);
+
+// CE: alternatives/if_else 只读 condition(s)/children, exp 只读 count/condition(s),
+// empty 额外读 weight/quality, 其余类型都读 condition(s)/functions/weight/quality。
+// type 缺失或写成空串时 CE 直接报错, 这里仍按最宽松的并集处理。
+const ENTRY_COMMON_BY_TYPE: Readonly<Record<string, readonly SchemaField[]>> = {
+  alternatives: ENTRY_COMMON,
+  if_else: ENTRY_COMMON,
+  exp: ENTRY_COMMON,
+  empty: EMPTY_ENTRY_COMMON,
+  item: SINGLE_ENTRY_COMMON,
+  furniture_item: SINGLE_ENTRY_COMMON,
+  function: SINGLE_ENTRY_COMMON,
+  loot_table: SINGLE_ENTRY_COMMON,
+};
+
+function entryCommonFor(type: string | undefined): readonly SchemaField[] {
+  if (type === undefined) return SINGLE_ENTRY_COMMON;
+  return ENTRY_COMMON_BY_TYPE[type] ?? SINGLE_ENTRY_COMMON;
+}
 
 const FUNCTION_COMMON: readonly SchemaField[] = [
   field("type", Messages.src.config.loot.schema.text0027, {
@@ -194,7 +240,7 @@ const FUNCTION_COMMON: readonly SchemaField[] = [
     valueDetails: LOOT_FUNCTION_TYPE_DETAILS,
     required: true,
   }),
-  list("conditions", Messages.src.config.loot.schema.text0028),
+  list("conditions", Messages.src.config.loot.schema.text0028, ["condition"]),
 ];
 const FUNCTION_FIELDS = new Map<string, readonly SchemaField[]>([
   [
@@ -279,13 +325,45 @@ const FORMULA_FIELDS = new Map<string, readonly SchemaField[]>([
   ],
 ]);
 
-export const VANILLA_LOOT_TYPES = ["block", "entity"] as const;
+export const VANILLA_LOOT_TYPES = [
+  "fishing",
+  "piglin_barter",
+  "block_break",
+  "entity_death",
+  "container",
+  "archaeology",
+  "entity_drop",
+  "harvest",
+  "block_shear",
+  "entity_shear",
+  "vault",
+  "advancement",
+  // 最新源码仍显式保留这些旧版 type 别名。
+  "block",
+  "entity",
+  "shear_block",
+] as const;
 export const VANILLA_LOOT_TYPE_DETAILS: Readonly<
   Record<(typeof VANILLA_LOOT_TYPES)[number], string>
 > = {
+  fishing: "注入钓鱼掉落",
+  piglin_barter: "注入猪灵交易掉落",
+  block_break: "注入指定方块的破坏掉落",
+  entity_death: "注入指定实体的死亡掉落",
+  container: "注入指定容器战利品表",
+  archaeology: "注入指定考古战利品表",
+  entity_drop: "注入指定实体的普通掉落",
+  harvest: "注入指定方块的收获掉落",
+  block_shear: "注入指定方块的剪取掉落",
+  entity_shear: "注入指定实体的剪取掉落",
+  vault: "注入指定宝库战利品表",
+  advancement: "注入指定进度奖励",
   block: Messages.src.config.loot.schema.text0040,
   entity: Messages.src.config.loot.schema.text0041,
+  shear_block: "block_shear 的旧版别名",
 };
+
+const WILDCARD_LOOT_SOURCE_TYPES = new Set(["fishing", "piglin_barter"]);
 
 function typed(
   common: readonly SchemaField[],
@@ -318,22 +396,47 @@ export function vanillaLootFieldsForContext(
   context: SchemaContext,
 ): readonly SchemaField[] {
   const type = context.siblingValues.get("type")?.toLowerCase();
+  const canonicalType =
+    type === "block"
+      ? "block_break"
+      : type === "entity"
+        ? "entity_death"
+        : type === "shear_block"
+          ? "block_shear"
+          : type;
+  const targeted =
+    canonicalType === undefined || !WILDCARD_LOOT_SOURCE_TYPES.has(canonicalType);
+  const targetProvider: SchemaValueProvider | undefined =
+    canonicalType === "block_break" ||
+    canonicalType === "harvest" ||
+    canonicalType === "block_shear"
+      ? "block-id"
+      : canonicalType === "entity_death" ||
+          canonicalType === "entity_drop" ||
+          canonicalType === "entity_shear"
+        ? "entity-type"
+        : undefined;
   return withTemplateSchemaFields(context.path, [
     field("type", Messages.src.config.loot.schema.text0042, {
       values: VANILLA_LOOT_TYPES,
       valueDetails: VANILLA_LOOT_TYPE_DETAILS,
       required: true,
     }),
-    field(
-      "target",
-      type === "entity"
-        ? Messages.src.config.loot.schema.text0043
-        : Messages.src.config.loot.schema.text0044,
-      {
-        snippet: "target:\n  - ${0}",
-        valueProvider: type === "entity" ? "entity-type" : "block-state",
-      },
-    ),
+    ...(targeted
+      ? [
+          field("target", "要匹配的目标 Key；可填写单值或列表", {
+            aliases: ["targets"],
+            snippet: "target:\n  - ${0}",
+            ...(targetProvider === undefined
+              ? {}
+              : { valueProvider: targetProvider }),
+          }),
+        ]
+      : []),
+    list("condition", "Loot Source 生效条件", ["conditions"]),
+    field("overwrite", "覆写原掉落的部分；支持 none/all/items/item/experience/exp", {
+      snippet: "overwrite: ${1|none,all,items,experience|}",
+    }),
     field("override", Messages.src.config.loot.schema.text0045, {
       valueProvider: "boolean",
       values: ["true", "false"],
@@ -426,7 +529,7 @@ function lootNumberProviderFields(
         ["count", "amount", "exp"].includes(tail)) ||
       (compact.includes("functions") &&
         ["count", "amount", "min", "max"].includes(tail)) ||
-      (compact.includes("conditions") &&
+      ((compact.includes("conditions") || compact.includes("condition")) &&
         ["x", "y", "z", "count", "value", "min", "max"].includes(tail)))
   ) {
     return sharedNumberProviderFields(context.siblingValues.get("type"));
@@ -458,27 +561,34 @@ export function lootFieldsForContext(
       numberProvider("bonus_rolls", Messages.src.config.loot.schema.text0050, [
         "bonus-rolls",
       ]),
-      list("conditions", Messages.src.config.loot.schema.text0051),
+      list("conditions", Messages.src.config.loot.schema.text0051, [
+        "condition",
+      ]),
       list("entries", Messages.src.config.loot.schema.text0052),
       list("functions", Messages.src.config.loot.schema.text0053),
     ];
   else if (tail === "entries" || tail === "children") {
     const rawType = context.siblingValues.get("type");
     const type = localRegistryDiscriminator(rawType);
-    fields = typed(
-      type === "exp" || type === "alternatives" || type === "if_else"
-        ? ENTRY_COMMON
-        : SINGLE_ENTRY_COMMON,
-      ENTRY_FIELDS,
-      rawType,
-    );
+    fields = typed(entryCommonFor(type), ENTRY_FIELDS, rawType);
   } else if (tail === "functions")
     fields = typed(
       FUNCTION_COMMON,
       FUNCTION_FIELDS,
       context.siblingValues.get("type"),
     );
-  else if (tail === "conditions" || tail === "terms" || tail === "term")
+  else if (tail === "run")
+    // type: function 的 run 用的是通用函数, 不是战利品函数
+    fields = fieldsForDiscriminator(
+      "function",
+      context.siblingValues.get("type"),
+    );
+  else if (
+    tail === "conditions" ||
+    tail === "condition" ||
+    tail === "terms" ||
+    tail === "term"
+  )
     fields = fieldsForDiscriminator(
       "condition",
       context.siblingValues.get("type"),
@@ -510,7 +620,12 @@ export function lootListItemField(
   path: readonly string[],
 ): SchemaField | undefined {
   const tail = compactPath(path).at(-1);
-  if (tail === "conditions" || tail === "terms" || tail === "term") {
+  if (
+    tail === "conditions" ||
+    tail === "condition" ||
+    tail === "terms" ||
+    tail === "term"
+  ) {
     return field("type", Messages.src.config.loot.schema.text0054, {
       valueProvider: "condition-type",
     });

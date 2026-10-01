@@ -10,6 +10,36 @@ import { canonicalPath } from "../../util/paths.js";
 import { isRecord } from "../../util/records.js";
 import type { ConfigurationCandidateInput } from "../model.js";
 import type { JukeboxSongBuildResult, JukeboxSongDefinition } from "./model.js";
+import { evaluateExpression } from "../expression/evaluator.js";
+
+  // CE 的 getFloat/getAsInt: 字符串可以先删下划线再解析, 失败后按表达式求值
+function configNumber(value: unknown): number | undefined {
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number")
+    return Number.isFinite(value) ? value : undefined;
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  const literal = Number(value.trim().replaceAll("_", ""));
+  if (!Number.isNaN(literal)) return literal;
+  try {
+    const evaluated = evaluateExpression(value);
+    return typeof evaluated === "number" && Number.isFinite(evaluated)
+      ? evaluated
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function fieldRange(
+  candidate: ConfigurationCandidateInput,
+  fieldName: string,
+): CoreIssue["range"] {
+  return (
+    candidate.source.fieldValueRanges.get(fieldName) ??
+    candidate.source.fieldKeyRanges.get(fieldName) ??
+    candidate.source.idRange
+  );
+}
 
 function parseSong(
   candidate: ConfigurationCandidateInput,
@@ -18,33 +48,20 @@ function parseSong(
   if (candidate.kind !== "jukebox-song" || !isRecord(candidate.value))
     return undefined;
   const id = makeIdentifier(candidate.rawId, candidate.source.pack.namespace);
-  if (!isValidIdentifier(id)) {
-    issues.push({
-      code: "invalid-jukebox-song-id",
-      message: Messages.src.config.jukebox.parser.text0001(id),
-      severity: "error",
-      uri: candidate.source.uri,
-      range: candidate.source.idRange,
-    });
-    return undefined;
-  }
 
-  // 声音名称要先转小写, 再补 minecraft 命名空间
   const sound =
     typeof candidate.value.sound === "string"
       ? makeIdentifier(candidate.value.sound.toLowerCase(), "minecraft")
       : undefined;
   const rawLength = candidate.value.length;
-  let length: number | undefined;
-  if (typeof rawLength === "number" && Number.isFinite(rawLength)) {
-    length = rawLength;
-  } else if (
-    typeof rawLength === "string" &&
-    rawLength.trim() !== "" &&
-    Number.isFinite(Number(rawLength))
-  ) {
-    length = Number(rawLength);
-  }
+  const length = configNumber(rawLength);
+  // CE: range 默认 32, comparator_output 默认 15
+  const rawRange = candidate.value.range;
+  const range = rawRange === undefined ? 32 : configNumber(rawRange);
+  const rawComparator =
+    candidate.value.comparator_output ?? candidate.value["comparator-output"];
+  const comparatorOutput =
+    rawComparator === undefined ? 15 : configNumber(rawComparator);
 
   if (!sound || !isValidIdentifier(sound)) {
     issues.push({
@@ -52,10 +69,7 @@ function parseSong(
       message: Messages.src.config.jukebox.parser.text0002,
       severity: "error",
       uri: candidate.source.uri,
-      range:
-        candidate.source.fieldValueRanges.get("sound") ??
-        candidate.source.fieldKeyRanges.get("sound") ??
-        candidate.source.idRange,
+      range: fieldRange(candidate, "sound"),
     });
   }
   if (length === undefined) {
@@ -64,13 +78,39 @@ function parseSong(
       message: Messages.src.config.jukebox.parser.text0003,
       severity: "error",
       uri: candidate.source.uri,
-      range:
-        candidate.source.fieldValueRanges.get("length") ??
-        candidate.source.fieldKeyRanges.get("length") ??
-        candidate.source.idRange,
+      range: fieldRange(candidate, "length"),
     });
   }
-  if (!sound || !isValidIdentifier(sound) || length === undefined)
+  if (range === undefined) {
+    issues.push({
+      code: "invalid-jukebox-song-range",
+      message: `唱片机曲目 ${id} 的 range 必须是数字或 CraftEngine 表达式`,
+      severity: "error",
+      uri: candidate.source.uri,
+      range: fieldRange(candidate, "range"),
+    });
+  }
+  if (comparatorOutput === undefined) {
+    issues.push({
+      code: "invalid-jukebox-song-comparator-output",
+      message: `唱片机曲目 ${id} 的 comparator_output 必须是整数或 CraftEngine 表达式`,
+      severity: "error",
+      uri: candidate.source.uri,
+      range: fieldRange(
+        candidate,
+        Object.hasOwn(candidate.value, "comparator_output")
+          ? "comparator_output"
+          : "comparator-output",
+      ),
+    });
+  }
+  if (
+    !sound ||
+    !isValidIdentifier(sound) ||
+    length === undefined ||
+    range === undefined ||
+    comparatorOutput === undefined
+  )
     return undefined;
 
   const [namespace, value] = splitIdentifier(
@@ -88,6 +128,8 @@ function parseSong(
         ? candidate.value.description
         : "",
     length,
+    range,
+    comparatorOutput: Math.trunc(comparatorOutput),
   };
 }
 

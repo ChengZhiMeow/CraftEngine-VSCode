@@ -438,6 +438,7 @@ export function configurationResourceReferenceAt(
     index.blocksInDocument(document),
     index.furnitureInDocument(document),
     index.lootTablesInDocument(document),
+    index.genericResourcesInDocument(document),
   ).find((reference) => offsetIn(offset, reference.range));
 }
 
@@ -451,6 +452,7 @@ export function configurationIdReferenceAt(
     index.blocksInDocument(document),
     index.furnitureInDocument(document),
     index.lootTablesInDocument(document),
+    index.genericResourcesInDocument(document),
   ).find((reference) => offsetIn(offset, reference.range));
 }
 
@@ -472,7 +474,6 @@ function templateInvocationReferences(
       );
       if (typeof raw !== "string" || raw.includes("${")) continue;
       const identifier = makeIdentifier(raw, "minecraft");
-      if (!isValidIdentifier(identifier)) continue;
       const key = `${range.start}:${range.end}:${identifier}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -594,6 +595,7 @@ export function equipmentTextureReferenceAt(
 
 type ConfigurationTarget =
   | ItemDefinition
+  | GenericResourceDefinition
   | ReturnType<CraftEngineWorkspaceIndex["opaqueIds"]>[number]
   | ReturnType<
       NonNullable<
@@ -636,6 +638,16 @@ function crossDomainKindLabel(
       return Messages.src.providers.completion.provider.text0149;
     case "advancement":
       return Messages.src.providers.completion.provider.text0150;
+    case "entity":
+      return "实体";
+    case "attribute":
+      return "自定义属性";
+    case "attribute-operation":
+      return "属性运算";
+    case "equipment-set":
+      return "装备套装";
+    case "atlas":
+      return "Atlas";
   }
 }
 
@@ -707,6 +719,14 @@ export function configurationTargets(
     return catalog.resolveJukeboxSong(reference.identifier).candidates;
   if (reference.kind === "loot")
     return catalog.resolveLoot(reference.identifier).candidates;
+  if (
+    reference.kind === "entity" ||
+    reference.kind === "attribute" ||
+    reference.kind === "attribute-operation" ||
+    reference.kind === "equipment-set"
+  )
+    return catalog.resolveGeneric(reference.kind, reference.identifier)
+      .candidates;
   return catalog.resolveOpaque(reference.kind, reference.identifier).candidates;
 }
 
@@ -731,6 +751,14 @@ export function selectedConfigurationTarget(
     return catalog.resolveJukeboxSong(reference.identifier).selected;
   if (reference.kind === "loot")
     return catalog.resolveLoot(reference.identifier).selected;
+  if (
+    reference.kind === "entity" ||
+    reference.kind === "attribute" ||
+    reference.kind === "attribute-operation" ||
+    reference.kind === "equipment-set"
+  )
+    return catalog.resolveGeneric(reference.kind, reference.identifier)
+      .selected;
   return catalog.resolveOpaque(reference.kind, reference.identifier).selected;
 }
 
@@ -750,6 +778,14 @@ export function configurationKindLabel(
       return Messages.src.providers.completion.provider.text0022;
     case "jukebox-song":
       return Messages.src.providers.completion.provider.text0023;
+    case "entity":
+      return "实体";
+    case "attribute":
+      return "自定义属性";
+    case "attribute-operation":
+      return "属性操作";
+    case "equipment-set":
+      return "装备套装";
     case "template":
       return Messages.src.providers.completion.provider.text0024;
   }
@@ -2051,7 +2087,7 @@ export class CraftEngineCompletionProvider
         : undefined;
       const extraListValues = new Map<string, string>();
       if (
-        resolveMiscResourceSection(sectionType) === "category" &&
+        resolveMiscResourceSection(sectionType) === "categories" &&
         listField?.label === "item-or-category"
       ) {
         for (const entry of this.workspaceIndex
@@ -2762,7 +2798,7 @@ export class CraftEngineCompletionProvider
           return recipeCompletions(blueprintPath, blueprintRaw);
         case "loot":
           return lootCompletions(blueprintPath, true);
-        case "vanilla-loots":
+        case "loot-sources":
           return vanillaLootCompletions(blueprintPath, true);
         case "configured-feature":
         case "placed-feature":
@@ -2801,6 +2837,12 @@ export class CraftEngineCompletionProvider
         case "skip-optimization":
         case "paintings":
         case "advancements":
+        case "entities":
+        case "attributes":
+        case "attribute-operations":
+        case "equipment-sets":
+        case "damage-rules":
+        case "atlases":
           return miscCompletions(
             exactBlueprintType ?? blueprintFamily.canonical,
             blueprintPath,
@@ -3034,7 +3076,7 @@ export class CraftEngineCompletionProvider
       return lootCompletions(yamlContext.path, true);
     }
 
-    if (sectionFamily?.canonical === "vanilla-loots") {
+    if (sectionFamily?.canonical === "loot-sources") {
       return vanillaLootCompletions(yamlContext.path, true);
     }
 
@@ -4325,6 +4367,7 @@ export function existingFileTargets(
     workspaceIndex.blocksInDocument(document),
     workspaceIndex.furnitureInDocument(document),
     workspaceIndex.lootTablesInDocument(document),
+    workspaceIndex.genericResourcesInDocument(document),
   )) {
     if (
       reservedReferenceRanges.has(
@@ -4388,6 +4431,7 @@ export function existingFileTargets(
     workspaceIndex.blocksInDocument(document),
     workspaceIndex.furnitureInDocument(document),
     workspaceIndex.lootTablesInDocument(document),
+    workspaceIndex.genericResourcesInDocument(document),
   )) {
     if (
       reservedReferenceRanges.has(

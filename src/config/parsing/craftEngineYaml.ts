@@ -15,7 +15,10 @@ import {
 
 import type { CoreIssue, TextRange } from "../../diagnostics/model.js";
 import { isRecord, isUnknownArray } from "../../util/records.js";
-import { matchesMinecraftVersion } from "../../util/version.js";
+import {
+  DEFAULT_MINECRAFT_VERSION,
+  matchesMinecraftVersion,
+} from "../../util/version.js";
 import type { ParsedSection, ParsedYamlFile } from "../model.js";
 
 import { Messages } from "../../messages.js";
@@ -300,6 +303,24 @@ function unresolvedTagFailure(message: string): boolean {
   );
 }
 
+// __proto__ 不是普通数据键: 直接赋值会改写原型或丢键, 必须建成自有属性
+function setOwn(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): void {
+  if (key !== "__proto__") {
+    target[key] = value;
+    return;
+  }
+  Object.defineProperty(target, key, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  });
+}
+
 function nodeToPlainValue(value: unknown): unknown {
   if (isScalar(value)) {
     return value.value;
@@ -310,7 +331,11 @@ function nodeToPlainValue(value: unknown): unknown {
   if (isMap(value)) {
     const result: Record<string, unknown> = {};
     for (const pair of value.items) {
-      result[String(nodeToPlainValue(pair.key))] = nodeToPlainValue(pair.value);
+      setOwn(
+        result,
+        String(nodeToPlainValue(pair.key)),
+        nodeToPlainValue(pair.value),
+      );
     }
     return result;
   }
@@ -331,9 +356,22 @@ function valueFromNode(
   node: Node | null | undefined,
   document: Document,
 ): unknown {
-  if (!node) {
-    return null;
+  if (!node) return null;
+  if (isMap(node)) {
+    const result: Record<string, unknown> = {};
+    for (const pair of node.items) {
+      setOwn(
+        result,
+        scalarKey(pair.key),
+        valueFromNode(pair.value as Node | null | undefined, document),
+      );
+    }
+    return result;
   }
+  if (isSeq(node))
+    return node.items.map((item) =>
+      valueFromNode(item as Node | null | undefined, document),
+    );
   try {
     return node.toJS(document, { maxAliasCount: 10_000 });
   } catch {
@@ -348,9 +386,9 @@ function deepMerge(
   for (const [key, value] of Object.entries(addition)) {
     const previous = target[key];
     if (isRecord(previous) && isRecord(value)) {
-      target[key] = deepMerge({ ...previous }, value);
+      setOwn(target, key, deepMerge({ ...previous }, value));
     } else {
-      target[key] = value;
+      setOwn(target, key, value);
     }
   }
   return target;
@@ -368,18 +406,25 @@ function setDeepKey(
     if (!part) {
       continue;
     }
-    if (!isRecord(cursor[part])) {
-      cursor[part] = {};
+    // __proto__ 走原型链读到的不是本层的容器, 必须按自有属性判断
+    if (!Object.hasOwn(cursor, part) || !isRecord(cursor[part])) {
+      setOwn(cursor, part, {});
     }
     cursor = cursor[part] as Record<string, unknown>;
   }
   const finalPart = path.at(-1);
   if (finalPart) {
-    const previous = cursor[finalPart];
-    cursor[finalPart] =
+    // 只有自有属性才算上一层留下的容器, __proto__ 继承到的是原型
+    const previous = Object.hasOwn(cursor, finalPart)
+      ? cursor[finalPart]
+      : undefined;
+    setOwn(
+      cursor,
+      finalPart,
       isRecord(previous) && isRecord(value)
         ? deepMerge({ ...previous }, value)
-        : value;
+        : value,
+    );
   }
 }
 
@@ -389,7 +434,7 @@ function versionSpecification(key: string): string {
 
 export function normalizeCraftEngineValue(
   value: unknown,
-  targetVersion = "26.2",
+  targetVersion = DEFAULT_MINECRAFT_VERSION,
 ): unknown {
   if (isUnknownArray(value)) {
     return value.map((item) => normalizeCraftEngineValue(item, targetVersion));
@@ -437,6 +482,7 @@ export function normalizeCraftEngineValue(
 
 function scalarKey(value: unknown): string {
   if (isScalar(value)) {
+    if (value.source !== undefined) return String(value.source);
     const scalar = value.value;
     return typeof scalar === "string" ||
       typeof scalar === "number" ||
@@ -556,12 +602,13 @@ function sectionFromPair(
   const keys = new Map<string, TextRange>();
   const values = new Map<string, TextRange>();
   collectRanges(pair.value, "", keys, values, targetVersion, yamlExtensions);
+  const sectionValue = yamlExtensions
+    ? normalizeCraftEngineValue(rawValue, targetVersion)
+    : rawValue;
   return {
     key,
     type: key.split("#", 1)[0] ?? key,
-    value: yamlExtensions
-      ? normalizeCraftEngineValue(rawValue, targetVersion)
-      : rawValue,
+    value: sectionValue,
     keyRange: rangeOf(pair.key),
     valueRange: rangeOf(pair.value, rangeOf(pair.key)),
     ranges: { keys, values },
@@ -677,7 +724,7 @@ function issueFromYamlError(
 export function parseCraftEngineYaml(
   uri: string,
   text: string,
-  targetVersion = "26.2",
+  targetVersion = DEFAULT_MINECRAFT_VERSION,
 ): ParsedYamlFile {
   const document = parseDocument(text, {
     customTags,
@@ -726,7 +773,7 @@ export function parseCraftEngineYaml(
 
 export function parseCraftEngineYamlValue(
   text: string,
-  targetVersion = "26.2",
+  targetVersion = DEFAULT_MINECRAFT_VERSION,
 ): unknown {
   const document = parseDocument(text, {
     customTags,

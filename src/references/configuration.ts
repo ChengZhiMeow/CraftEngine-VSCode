@@ -35,6 +35,12 @@ import type { BlockDefinition } from "../config/block/model.js";
 import type { FurnitureDefinition } from "../config/furniture/model.js";
 import type { ItemDefinition } from "../config/item/model.js";
 import type { LootDefinition } from "../config/loot/model.js";
+import type { GenericResourceDefinition } from "../config/resource/model.js";
+import {
+  miscResourceFieldsForContext,
+  miscResourceListItemField,
+  miscResourceSchemaFieldForName,
+} from "../config/resource/schema.js";
 import { NUMBER_PROVIDER_TYPES } from "../config/number-provider/schema.js";
 import { localRegistryDiscriminator } from "../config/registry/discriminators.js";
 import type { SchemaValueProvider } from "../config/schema/types.js";
@@ -56,6 +62,10 @@ export type ConfigurationIdReferenceKind =
   | "loot"
   | "equipment"
   | "jukebox-song"
+  | "entity"
+  | "attribute"
+  | "attribute-operation"
+  | "equipment-set"
   | "template";
 
 export interface ConfigurationIdReference {
@@ -433,14 +443,27 @@ function configurationIdentifier(
     )
       return undefined;
     if (raw.startsWith("#")) return undefined;
+    if (normalizedPath.includes("list"))
+      return makeIdentifier(raw, "minecraft");
     if (normalizedPath.includes("correct_tools")) return keyOfReference(raw);
   }
+
+  if (
+    (provider === "attribute-operation" &&
+      normalizedPath.includes("operations")) ||
+    (provider === "entity-type" && normalizedPath.includes("entities")) ||
+    (provider === "attribute" &&
+      (normalizedPath.includes("base") || normalizedPath.includes("sync")))
+  )
+    return makeIdentifier(raw, "minecraft");
 
   let value = raw;
   switch (provider) {
     case "jukebox-song":
   // 裸唱片机歌曲值没有默认命名空间, 不能生成可靠链接
-      return raw.includes(":") && isValidIdentifier(raw) ? raw : undefined;
+      return raw.includes(":") && isValidIdentifier(raw.toLowerCase())
+        ? raw.toLowerCase()
+        : undefined;
     case "block-state":
       return blockStateReference(raw);
     case "block-id": {
@@ -451,19 +474,27 @@ function configurationIdentifier(
     }
   }
 
-  // 普通值会转成小写并补 minecraft, 不继承当前包的命名空间
   const identifier = makeIdentifier(value.toLowerCase(), "minecraft");
   return isValidIdentifier(identifier) ? identifier : undefined;
 }
 
+const TEMPLATE_INVOCATION_RANGES = new WeakMap<
+  Readonly<{ fieldValueRanges: ReadonlyMap<string, TextRange> }>,
+  ReadonlySet<string>
+>();
+
 function templateInvocationRangeKeys(
   source: Readonly<{ fieldValueRanges: ReadonlyMap<string, TextRange> }>,
 ): ReadonlySet<string> {
+  const cached = TEMPLATE_INVOCATION_RANGES.get(source);
+  if (cached) return cached;
+
   const result = new Set<string>();
   for (const [fieldPath, range] of source.fieldValueRanges) {
     if (!/(?:^|\.)(?:template|templates)(?:\.\d+)?$/u.test(fieldPath)) continue;
     result.add(`${range.start}:${range.end}`);
   }
+  TEMPLATE_INVOCATION_RANGES.set(source, result);
   return result;
 }
 
@@ -568,12 +599,106 @@ function lootProviderForPath(
   )?.valueProvider;
 }
 
+function genericSection(kind: GenericResourceDefinition["kind"]): string {
+  switch (kind) {
+    case "recipe":
+      return "recipes";
+    case "category":
+      return "categories";
+    case "emoji":
+      return "emojis";
+    case "painting":
+      return "paintings";
+    case "configured-feature":
+      return "configured-features";
+    case "placed-feature":
+      return "placed-features";
+    case "advancement":
+      return "advancements";
+    case "entity":
+      return "entities";
+    case "attribute":
+      return "attributes";
+    case "attribute-operation":
+      return "attribute-operations";
+    case "equipment-set":
+      return "equipment-sets";
+    case "atlas":
+      return "atlases";
+  }
+}
+
+  // 同一个 definition 的 provider 只取决于字段路径,
+  // resource 与 id 两条链会对同一路径各查一次, 这里按 definition 记忆化
+const GENERIC_PROVIDER_CACHE = new WeakMap<
+  GenericResourceDefinition,
+  Map<string, SchemaValueProvider | undefined>
+>();
+
+function genericProviderFor(
+  definition: GenericResourceDefinition,
+  path: readonly string[],
+): SchemaValueProvider | undefined {
+  let cache = GENERIC_PROVIDER_CACHE.get(definition);
+  if (!cache) {
+    cache = new Map();
+    GENERIC_PROVIDER_CACHE.set(definition, cache);
+  }
+  const key = path.join(".");
+  if (cache.has(key)) return cache.get(key);
+  const provider = genericProviderForPath(definition, path);
+  cache.set(key, provider);
+  return provider;
+}
+
+function genericProviderForPath(
+  resource: GenericResourceDefinition,
+  path: readonly string[],
+): SchemaValueProvider | undefined {
+  const leaf = path.at(-1);
+  if (!leaf) return undefined;
+  const parent = path.slice(0, -1);
+  const contextPath = [resource.id, ...parent];
+  const ancestorTypes = ancestorTypesForPath(resource.raw, contextPath);
+  const context = {
+    path: contextPath,
+    siblingValues: siblingValues(configValueAt(resource.raw, parent)),
+    ancestorTypes,
+  };
+  const section = genericSection(resource.kind);
+  if (/^\d+$/u.test(leaf)) {
+    const fieldName = parent.at(-1);
+    if (!fieldName) return undefined;
+    const owner = parent.slice(0, -1);
+    // ancestorTypes 已经沿 contextPath 收集过, 前缀的切片可以复用同一份结果
+    const ownerContext = {
+      path: [resource.id, ...owner],
+      siblingValues: siblingValues(configValueAt(resource.raw, owner)),
+      ancestorTypes: ancestorTypes.slice(parent.length - owner.length),
+    };
+    if (
+      !miscResourceSchemaFieldForName(
+        fieldName,
+        miscResourceFieldsForContext(section, ownerContext),
+      )
+    )
+      return undefined;
+    return miscResourceListItemField(section, [resource.id, ...parent])
+      ?.valueProvider;
+  }
+  return miscResourceSchemaFieldForName(
+    leaf,
+    miscResourceFieldsForContext(section, context),
+  )?.valueProvider;
+}
+
 function referencesForDefinitions<
   T extends
     | ItemDefinition
     | BlockDefinition
     | FurnitureDefinition
-    | LootDefinition,
+    | LootDefinition
+    | GenericResourceDefinition,
 >(
   definitions: readonly T[],
   providerFor: (
@@ -616,12 +741,14 @@ export function configurationResourceReferences(
   blocks: readonly BlockDefinition[],
   furniture: readonly FurnitureDefinition[] = [],
   lootTables: readonly LootDefinition[] = [],
+  genericResources: readonly GenericResourceDefinition[] = [],
 ): readonly ConfigurationResourceReference[] {
   return [
     ...referencesForDefinitions(items, providerForPath),
     ...blockResourceReferences(blocks),
     ...referencesForDefinitions(furniture, furnitureProviderForPath),
     ...referencesForDefinitions(lootTables, lootProviderForPath),
+    ...referencesForDefinitions(genericResources, genericProviderFor),
   ];
 }
 
@@ -630,7 +757,8 @@ function idReferencesForDefinitions<
     | ItemDefinition
     | BlockDefinition
     | FurnitureDefinition
-    | LootDefinition,
+    | LootDefinition
+    | GenericResourceDefinition,
 >(
   definitions: readonly T[],
   providerFor: (
@@ -670,6 +798,18 @@ function idReferencesForDefinitions<
         case "jukebox-song":
           kind = "jukebox-song";
           break;
+        case "entity-type":
+          kind = "entity";
+          break;
+        case "custom-attribute":
+          kind = "attribute";
+          break;
+        case "attribute-operation":
+          kind = "attribute-operation";
+          break;
+        case "equipment-set":
+          kind = "equipment-set";
+          break;
       }
       if (!kind) continue;
       const identifier = configurationIdentifier(provider, raw, path);
@@ -688,11 +828,13 @@ export function configurationIdReferences(
   blocks: readonly BlockDefinition[],
   furniture: readonly FurnitureDefinition[] = [],
   lootTables: readonly LootDefinition[] = [],
+  genericResources: readonly GenericResourceDefinition[] = [],
 ): readonly ConfigurationIdReference[] {
   return [
     ...idReferencesForDefinitions(items, providerForPath),
     ...idReferencesForDefinitions(blocks, blockProviderForPath),
     ...idReferencesForDefinitions(furniture, furnitureProviderForPath),
     ...idReferencesForDefinitions(lootTables, lootProviderForPath),
+    ...idReferencesForDefinitions(genericResources, genericProviderFor),
   ];
 }

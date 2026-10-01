@@ -51,6 +51,8 @@ interface ReferenceTarget {
   readonly severity: CoreIssue["severity"];
   readonly vanilla?: ReadonlySet<string> | undefined;
   readonly allowUnknownExternalNamespace?: boolean;
+  // CE 里这类引用不是标识符(分类键、方块状态、功能 ID), 不做字符集校验
+  readonly unrestrictedKey?: boolean;
   readonly normalize?: (value: string) => string | undefined;
 }
 
@@ -116,6 +118,9 @@ function buildReferenceIndex(input: CrossDomainReferenceInput): ReferenceIndex {
   ): void => {
     const root = canonicalPath(definition.source.pack.resourcesRoot);
     const namespaces = mutablePackNamespaces.get(root) ?? new Set<string>();
+    // CE 注册 id 与命名空间都按原文保存(IdSectionConfigParser.java:42 的
+    // Key.withDefaultNamespace, Key.of 不折叠大小写), 引用侧同样归一化后比较,
+    // 两侧都小写才能和 CE 的标识符校验(Identifier.java:6-26 只认小写)一致
     namespaces.add(definition.source.pack.namespace.toLowerCase());
     mutablePackNamespaces.set(root, namespaces);
     if (!definition.source.pack.active) return;
@@ -140,12 +145,14 @@ function validateReference(
   context: ValidationContext,
 ): void {
   if (typeof rawValue !== "string" || rawValue.includes("${")) return;
+  // 引用值统一小写: CE 读标识符时先 toLowerCase 再校验(ConfigValue.java:363-378),
+  // 索引侧同样按小写保存, 两侧不对称会让混合大小写的写法查不到
   const id =
     target.normalize === undefined
       ? makeIdentifier(rawValue.toLowerCase(), "minecraft")
-      : target.normalize(rawValue);
+      : target.normalize(rawValue)?.toLowerCase();
   if (id === undefined) return;
-  const valid = isValidIdentifier(id);
+  const valid = target.unrestrictedKey === true || isValidIdentifier(id);
   context.references.push({
     kind: target.kind,
     identifier: id,
@@ -213,8 +220,14 @@ function selectedField(
   raw: Readonly<Record<string, unknown>>,
   names: readonly string[],
 ): readonly [name: string, value: unknown] | undefined {
-  for (const name of names)
-    if (Object.hasOwn(raw, name)) return [name, raw[name]];
+  for (const name of names) {
+    if (
+      Object.hasOwn(raw, name) &&
+      raw[name] !== null &&
+      raw[name] !== undefined
+    )
+      return [name, raw[name]];
+  }
   return undefined;
 }
 
@@ -238,11 +251,12 @@ function validateItemReferences(
   item: ItemDefinition,
   context: ValidationContext,
 ): void {
-  if (Object.hasOwn(item.raw, "category"))
-    values(item.raw.category).forEach((value, index) =>
+  const category = selectedField(item.raw, ["category", "categories"]);
+  if (category)
+    values(category[1]).forEach((value, index) =>
       validateReference(
         item.source,
-        isUnknownArray(item.raw.category) ? at("category", index) : "category",
+        isUnknownArray(category[1]) ? at(category[0], index) : category[0],
         value,
         {
           kind: "category",
@@ -429,10 +443,11 @@ function validateCategoryReferences(
       },
       context,
     );
-  if (!Object.hasOwn(resource.raw, "list")) return;
-  const members = resource.raw.list;
-  values(members).forEach((member, index) => {
-    const memberPath = isUnknownArray(members) ? at("list", index) : "list";
+  const validateMembers = (members: unknown, fieldPath: string): void =>
+    values(members).forEach((member, index) => {
+    const memberPath = isUnknownArray(members)
+      ? at(fieldPath, index)
+      : fieldPath;
     if (typeof member === "string" && member.startsWith("#")) {
       validateReference(
         resource.source,
@@ -444,6 +459,7 @@ function validateCategoryReferences(
           invalidCode: "invalid-category-reference",
           unknownCode: "unknown-category-reference",
           severity: "warning",
+          unrestrictedKey: true,
         },
         context,
       );
@@ -460,10 +476,29 @@ function validateCategoryReferences(
         unknownCode: "unknown-item-reference",
         severity: "warning",
         vanilla: context.vanilla.items,
+        unrestrictedKey: true,
       },
       context,
     );
   });
+  if (Object.hasOwn(resource.raw, "list"))
+    validateMembers(resource.raw.list, "list");
+
+  const collectSource = (source: unknown, fieldPath: string): void => {
+    if (isUnknownArray(source)) {
+      source.forEach((entry, index) => collectSource(entry, at(fieldPath, index)));
+      return;
+    }
+    if (!isRecord(source)) return;
+    const type =
+      typeof source.type === "string"
+        ? normalizedCraftEngineKey(source.type)
+        : undefined;
+    if (type !== "list" || !Object.hasOwn(source, "list")) return;
+    validateMembers(source.list, at(fieldPath, "list"));
+  };
+  if (Object.hasOwn(resource.raw, "source"))
+    collectSource(resource.raw.source, "source");
 }
 
 function craftEngineInteger(value: string): boolean {
@@ -479,13 +514,19 @@ function craftEngineInteger(value: string): boolean {
 function emojiImageIdentifier(value: string): string | undefined {
   const parts = value.split(":");
   if (parts.length !== 2 && parts.length !== 4) return undefined;
+  // 长度已经限定, 这里只是 noUncheckedIndexedAccess 需要的显式收窄
+  const [namespace, id, offsetX, offsetY] = parts;
+  if (namespace === undefined || id === undefined) return undefined;
   if (
     parts.length === 4 &&
-    (!craftEngineInteger(parts[2] ?? "") || !craftEngineInteger(parts[3] ?? ""))
+    (offsetX === undefined ||
+      offsetY === undefined ||
+      !craftEngineInteger(offsetX) ||
+      !craftEngineInteger(offsetY))
   ) {
     return undefined;
   }
-  return `${parts[0]?.toLowerCase() ?? ""}:${parts[1]?.toLowerCase() ?? ""}`;
+  return `${namespace}:${id}`;
 }
 
 function validateEmojiReferences(
@@ -523,6 +564,7 @@ function validateEmojiReferences(
       unknownCode: "unknown-image-reference",
       severity: "error",
       normalize: emojiImageIdentifier,
+      unrestrictedKey: true,
     },
     context,
   );
@@ -771,6 +813,7 @@ function validateWorldgenBlockReference(
       severity: "error",
       vanilla: context.vanilla.blocks,
       allowUnknownExternalNamespace: true,
+      unrestrictedKey: true,
       normalize: state
         ? blockStateIdentifier
         : (candidate) => makeIdentifier(candidate, "minecraft"),
@@ -973,7 +1016,12 @@ function validateBlockStateProvider(
     }
     return;
   }
-  if (selected === "minecraft:simple_state_provider") {
+  if (
+    selected === "minecraft:simple_state_provider" ||
+    // CraftEngine 26.3 起官方默认配置改用改短的类型名 (blocks/tree.yml: minecraft:simple),
+    // 短名与长名的字段完全一致
+    selected === "minecraft:simple"
+  ) {
     if (Object.hasOwn(value, "state")) {
       validateBlockStateValue(
         value.state,
@@ -986,7 +1034,9 @@ function validateBlockStateProvider(
     return;
   }
   if (
-    selected !== "minecraft:rule_based_state_provider" ||
+    (selected !== "minecraft:rule_based_state_provider" &&
+      // 同上: 26.3 起官方配置写 minecraft:rule_based
+      selected !== "minecraft:rule_based") ||
     !Object.hasOwn(value, "rules")
   )
     return;
@@ -1092,7 +1142,6 @@ function validateConfiguredFeatureBlockReferences(
   for (const canonical of [
     "trunk_provider",
     "foliage_provider",
-    "dirt_provider",
     "below_trunk_provider",
   ]) {
     const provider = selectedField(config, [
@@ -1116,15 +1165,16 @@ function validateConfiguredFeatureObject(
   context: ValidationContext,
 ): void {
   const type = typeInNamespace(raw.type, "minecraft");
-  if (!type || !isRecord(raw.config)) return;
-  const configPath = at(fieldPath, "config");
+  if (!type) return;
+  const config = isRecord(raw.config) ? raw.config : raw;
+  const configPath = isRecord(raw.config) ? at(fieldPath, "config") : fieldPath;
   if (
     type[0] === "minecraft" &&
     type[1] === "random_patch" &&
-    Object.hasOwn(raw.config, "feature")
+    Object.hasOwn(config, "feature")
   ) {
     validatePlacedFeatureValue(
-      raw.config.feature,
+      config.feature,
       source,
       at(configPath, "feature"),
       context,
@@ -1133,7 +1183,7 @@ function validateConfiguredFeatureObject(
   // 只读取已经认识的字段, 其他游戏字段和扩展插件字段保持原样
   validateConfiguredFeatureBlockReferences(
     type,
-    raw.config,
+    config,
     source,
     configPath,
     context,
@@ -1159,6 +1209,7 @@ function validatePlacedFeatureValue(
         severity: "error",
         vanilla: context.vanilla.placedFeatures,
         allowUnknownExternalNamespace: true,
+        unrestrictedKey: true,
       },
       context,
     );
@@ -1186,6 +1237,7 @@ function validatePlacedFeatureValue(
         severity: "error",
         vanilla: context.vanilla.configuredFeatures,
         allowUnknownExternalNamespace: true,
+        unrestrictedKey: true,
       },
       context,
     );
@@ -1222,6 +1274,7 @@ function validateConfiguredFeatureValue(
       severity: "error",
       vanilla: context.vanilla.configuredFeatures,
       allowUnknownExternalNamespace: true,
+      unrestrictedKey: true,
     },
     context,
   );
@@ -1249,9 +1302,15 @@ function validatePlacedFeatureReferences(
   }
 }
 
-function analyzeCrossDomainReferences(
+export interface CrossDomainAnalysis {
+  readonly references: readonly WorkspaceCrossDomainReference[];
+  readonly issues: readonly CoreIssue[];
+}
+
+  // 引用收集与诊断是同一趟遍历的两个产物, 重建时只调用这里一次
+export function analyzeCrossDomainReferences(
   input: CrossDomainReferenceInput,
-): ValidationContext {
+): CrossDomainAnalysis {
   const context: ValidationContext = {
     index: buildReferenceIndex(input),
     vanilla: {
@@ -1313,7 +1372,7 @@ function analyzeCrossDomainReferences(
         break;
     }
   }
-  return context;
+  return { references: context.references, issues: context.issues };
 }
 
 export function collectCrossDomainReferences(

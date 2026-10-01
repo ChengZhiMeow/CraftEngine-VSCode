@@ -65,11 +65,27 @@ function semantic(name: string): string {
   return (name.split("#", 1)[0] ?? name).replaceAll("-", "_");
 }
 
+function values(value: unknown): readonly unknown[] {
+  return isUnknownArray(value) ? value : [value];
+}
+
 function fieldEntry(
   value: Readonly<Record<string, unknown>>,
   wanted: string,
 ): readonly [key: string, value: unknown] | undefined {
   return Object.entries(value).find(([key]) => semantic(key) === wanted);
+}
+
+  // 同一对象要按多个候选名查找时, 只展开一次条目;
+  // 候选名按调用方给出的顺序保留优先级, 命中的键名仍取自对象自身
+function entriesField(
+  entries: readonly (readonly [string, unknown])[],
+  wanted: string | readonly string[],
+): readonly [string, unknown] | undefined {
+  for (const name of typeof wanted === "string" ? [wanted] : wanted)
+    for (const entry of entries)
+      if (semantic(entry[0]) === name) return entry;
+  return undefined;
 }
 
 function scalarConsumer(
@@ -252,12 +268,13 @@ function collectFunctions(
   // 已注册类型会接管整个内容, 未知类型不能继续扫描任意字段
   if (!resolved || resolved.external || !FUNCTION_TYPE_SET.has(resolved.name))
     return;
+  const entryList = Object.entries(value);
   const collectFields = (
-    fields: readonly string[],
+    names: readonly string[],
     kind: MiniMessageConsumerKind,
   ): void => {
-    for (const field of fields) {
-      const entry = fieldEntry(value, field);
+    for (const field of names) {
+      const entry = entriesField(entryList, field);
       if (entry)
         scalarConsumers(collector, entry[1], [...path, entry[0]], kind);
     }
@@ -344,8 +361,10 @@ function collectLore(
   const content = fieldEntry(value, "content");
   if (content)
     scalarConsumers(collector, content[1], [...path, content[0]], "component");
-  const conditions =
-    fieldEntry(value, "conditions") ?? fieldEntry(value, "condition");
+  const conditions = entriesField(Object.entries(value), [
+    "conditions",
+    "condition",
+  ]);
   if (conditions)
     collectConditions(collector, conditions[1], [...path, conditions[0]]);
 }
@@ -391,6 +410,27 @@ function collectAttributeDisplays(
         );
     }
   }
+}
+
+function collectFilterableBookText(
+  collector: ConsumerCollector,
+  value: unknown,
+  path: readonly string[],
+): void {
+  if (isRecord(value)) {
+    for (const name of ["raw", "filtered"]) {
+      const selected = fieldEntry(value, name);
+      if (selected)
+        scalarConsumers(
+          collector,
+          selected[1],
+          [...path, selected[0]],
+          "component",
+        );
+    }
+    return;
+  }
+  scalarConsumers(collector, value, path, "component");
 }
 
 function collectItemData(
@@ -455,6 +495,25 @@ function collectItemData(
           );
         break;
       }
+      case "written_book_content": {
+        if (!isRecord(entry)) break;
+        const title = fieldEntry(entry, "title");
+        if (title)
+          collectFilterableBookText(collector, title[1], [
+            ...entryPath,
+            title[0],
+          ]);
+        const pages = fieldEntry(entry, "pages");
+        if (pages)
+          values(pages[1]).forEach((page, index) =>
+            collectFilterableBookText(collector, page, [
+              ...entryPath,
+              pages[0],
+              ...(isUnknownArray(pages[1]) ? [String(index)] : []),
+            ]),
+          );
+        break;
+      }
       case "conditional":
       case "condition": {
         if (!isRecord(entry)) break;
@@ -469,6 +528,10 @@ function collectItemData(
         if (data) collectItemData(collector, data[1], [...entryPath, data[0]]);
         break;
       }
+      case "functions":
+      case "function":
+        collectFunctions(collector, entry, entryPath);
+        break;
     }
   }
   collectTemplateOverlays(collector, value, path, collectItemData);
@@ -505,6 +568,7 @@ function collectItem(
     switch (semantic(key)) {
       case "data":
       case "client_bound_data":
+      case "override_data":
         collectItemData(collector, entry, entryPath);
         break;
       case "events":
@@ -870,10 +934,11 @@ function collectFactoryBlueprint(
   value: unknown,
 ): void {
   if (!isRecord(value)) return;
-  const blueprint =
-    fieldEntry(value, "blueprint") ??
-    fieldEntry(value, "prototype") ??
-    fieldEntry(value, "schema");
+  const blueprint = entriesField(Object.entries(value), [
+    "blueprint",
+    "prototype",
+    "schema",
+  ]);
   if (!blueprint || !isRecord(blueprint[1])) return;
   for (const [sectionKey, sectionValue] of Object.entries(blueprint[1])) {
     collectSectionValue(
@@ -906,14 +971,17 @@ function collectGlobalVariables(
   if (!isRecord(value)) return;
   for (const [id, entry] of Object.entries(value)) {
     const path = [...prefix, id];
+    // 同一对象要分三次查找, 展开一次后复用
+    const entryList = Object.entries(isRecord(entry) ? entry : {});
     if (
       !isRecord(entry) ||
-      (!fieldEntry(entry, "template") && !fieldEntry(entry, "templates"))
+      (!entriesField(entryList, "template") &&
+        !entriesField(entryList, "templates"))
     ) {
       leafConsumers(collector, entry, path, "component");
       continue;
     }
-    const direct = fieldEntry(entry, "value");
+    const direct = entriesField(entryList, "value");
     if (direct)
       leafConsumers(collector, direct[1], [...path, direct[0]], "component");
     collectTemplateOverlays(
@@ -932,6 +1000,162 @@ function collectGlobalVariables(
           );
       },
     );
+  }
+}
+
+function collectExpressionValue(
+  collector: ConsumerCollector,
+  value: unknown,
+  path: readonly string[],
+): void {
+  if (typeof value === "string") {
+    scalarConsumer(collector, value, path, "text-provider");
+    return;
+  }
+  if (!isRecord(value)) return;
+  const expression = fieldEntry(value, "expression");
+  if (expression)
+    scalarConsumer(
+      collector,
+      expression[1],
+      [...path, expression[0]],
+      "text-provider",
+    );
+}
+
+function collectAttributes(
+  collector: ConsumerCollector,
+  value: unknown,
+): void {
+  if (!isRecord(value)) return;
+  for (const [id, entry] of Object.entries(value)) {
+    if (!isRecord(entry)) continue;
+    for (const name of ["derived", "base"] as const) {
+      const selected = fieldEntry(entry, name);
+      if (!selected) continue;
+      if (name === "derived")
+        collectExpressionValue(collector, selected[1], [id, selected[0]]);
+      else if (isRecord(selected[1])) {
+        const transform = fieldEntry(selected[1], "transform");
+        if (transform)
+          collectExpressionValue(collector, transform[1], [
+            id,
+            selected[0],
+            transform[0],
+          ]);
+      }
+    }
+    const sync = fieldEntry(entry, "sync");
+    if (sync)
+      (isUnknownArray(sync[1]) ? sync[1] : [sync[1]]).forEach(
+        (target, index) => {
+          if (!isRecord(target)) return;
+          const provider = fieldEntry(target, "value");
+          if (provider)
+            collectExpressionValue(collector, provider[1], [
+              id,
+              sync[0],
+              ...(isUnknownArray(sync[1]) ? [String(index)] : []),
+              provider[0],
+            ]);
+        },
+      );
+  }
+}
+
+function collectAttributeOperations(
+  collector: ConsumerCollector,
+  value: unknown,
+): void {
+  if (!isRecord(value)) return;
+  for (const [id, entry] of Object.entries(value)) {
+    if (!isRecord(entry)) continue;
+    const expression = fieldEntry(entry, "expression");
+    if (expression)
+      scalarConsumer(
+        collector,
+        expression[1],
+        [id, expression[0]],
+        "text-provider",
+      );
+  }
+}
+
+function collectEquipmentSets(
+  collector: ConsumerCollector,
+  value: unknown,
+): void {
+  if (!isRecord(value)) return;
+  for (const [id, entry] of Object.entries(value)) {
+    if (!isRecord(entry) || !isRecord(entry.pieces)) continue;
+    for (const [pieces, tier] of Object.entries(entry.pieces)) {
+      if (!isRecord(tier)) continue;
+      for (const name of ["attribute", "potion_effect", "potion_effects"])
+        for (const [index, modifier] of values(tier[name]).entries()) {
+          if (!isRecord(modifier)) continue;
+          // 每个档位都按这两个名字查一次, 展开一次后复用
+          const condition = entriesField(Object.entries(modifier), [
+            "condition",
+            "conditions",
+          ]);
+          if (condition)
+            collectConditions(collector, condition[1], [
+              id,
+              "pieces",
+              pieces,
+              name,
+              ...(isUnknownArray(tier[name]) ? [String(index)] : []),
+              condition[0],
+            ]);
+        }
+      if (!isRecord(tier.events)) continue;
+      for (const event of ["activate", "deactivate"])
+        if (tier.events[event] !== undefined)
+          collectFunctions(collector, tier.events[event], [
+            id,
+            "pieces",
+            pieces,
+            "events",
+            event,
+          ]);
+    }
+  }
+}
+
+function collectDamageRules(
+  collector: ConsumerCollector,
+  value: unknown,
+  path: readonly string[] = [],
+): void {
+  if (typeof value === "string" && path.includes("parts")) {
+    scalarConsumer(collector, value, path, "text-provider");
+    return;
+  }
+  if (isUnknownArray(value)) {
+    value.forEach((entry, index) =>
+      collectDamageRules(collector, entry, [...path, String(index)]),
+    );
+    return;
+  }
+  if (!isRecord(value)) return;
+  for (const [key, entry] of Object.entries(value)) {
+    const child = [...path, key];
+    switch (semantic(key)) {
+      case "formula":
+        collectExpressionValue(collector, entry, child);
+        collectDamageRules(collector, entry, child);
+        break;
+      case "condition":
+      case "conditions":
+        collectConditions(collector, entry, child);
+        break;
+      case "function":
+      case "functions":
+        collectFunctions(collector, entry, child);
+        break;
+      default:
+        collectDamageRules(collector, entry, child);
+    }
   }
 }
 
@@ -1006,13 +1230,25 @@ function collectSectionValue(
       );
       return;
     case "loot":
-    case "vanilla-loots":
+    case "loot-sources":
       if (isRecord(value))
         for (const [id, entry] of Object.entries(value))
           collectLootNode(collector, entry, [...prefix, id]);
       return;
     case "global-variables":
       collectGlobalVariables(collector, value, prefix);
+      return;
+    case "attributes":
+      collectAttributes(collector, value);
+      return;
+    case "attribute-operations":
+      collectAttributeOperations(collector, value);
+      return;
+    case "equipment-sets":
+      collectEquipmentSets(collector, value);
+      return;
+    case "damage-rules":
+      collectDamageRules(collector, value, prefix);
       return;
     case "translations":
     case "lang":

@@ -7,6 +7,7 @@ import type {
   TextureCandidate,
 } from "./model.js";
 import type { ImageCandidateInput } from "../model.js";
+import { legacyKeyAccepted } from "../registry/legacyKeys.js";
 import type { CoreIssue, TextRange } from "../../diagnostics/model.js";
 import { groupBy } from "../../util/collections.js";
 import {
@@ -17,6 +18,7 @@ import {
 import { isRecord, isUnknownArray } from "../../util/records.js";
 import { Messages } from "../../messages.js";
 import { imageSchemaFieldForName } from "./schema.js";
+import { evaluateExpression } from "../expression/evaluator.js";
 
 export interface ImageBuildOptions {
   readonly includeInactiveDiagnostics?: boolean;
@@ -32,6 +34,8 @@ export interface ImageBuildOptions {
   ) => boolean;
   readonly codepointStart?: number;
   readonly minecraftDefaultCodepointStart?: number;
+  // 资源段没有版本标记, 用工作区 config.yml 声明的版本放宽旧键
+  readonly configVersion?: number;
 }
 
 export interface ImageBuildResult {
@@ -90,21 +94,44 @@ function field(
   return undefined;
 }
 
+// CE 的 getAsInt: 数字截断, 字符串先删下划线再解析, 失败后按表达式求值
 function integer(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isInteger(value)) return value;
-  if (typeof value === "string" && /^-?\d+$/u.test(value.trim()))
-    return Number(value);
-  return undefined;
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number")
+    return Number.isFinite(value) ? Math.trunc(value) : undefined;
+  if (typeof value !== "string") return undefined;
+  const text = value.trim();
+  if (text === "") return undefined;
+  const literal = Number(text.replaceAll("_", ""));
+  if (Number.isFinite(literal)) return Math.trunc(literal);
+  try {
+    const evaluated = evaluateExpression(text);
+    return typeof evaluated === "number" && Number.isFinite(evaluated)
+      ? Math.trunc(evaluated)
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function decodeCodepoint(value: unknown): number | undefined {
-  const number = integer(value);
-  if (number !== undefined && number >= 0 && number <= 0x10ffff) return number;
+  // CE 只有 Number 才是固定码位, 字符串一律按字符序列处理
+  if (typeof value === "number") {
+    // CE 的码位走 getAsInt, Number 直接 intValue() 截断(ConfigValue.java:119-139), 65.7 就是 65
+    const truncated = Math.trunc(value);
+    return truncated >= 0 && truncated <= 0x10ffff ? truncated : undefined;
+  }
   if (typeof value !== "string") return undefined;
   const escaped = value.match(/^\\u\{?([0-9a-fA-F]{4,6})\}?$/u)?.[1];
   if (escaped) return Number.parseInt(escaped, 16);
   const characters = Array.from(value);
   return characters.length === 1 ? characters[0]?.codePointAt(0) : undefined;
+}
+
+function listRowText(value: unknown): string {
+  // CE 的 getAsStringList 会把元素 toString: chars: [65, 66] 是 "65"/"66"
+  // 两个字符行, 不是码位 65/66
+  return typeof value === "string" ? value : String(value);
 }
 
 function codepointRow(
@@ -130,7 +157,11 @@ function codepointRow(
       return [escaped];
     return Array.from(value).map((character) => character.codePointAt(0));
   }
-  if (isUnknownArray(value)) return value.map(decodeCodepoint);
+  // CE 的 getAsStringList 会把元素 toString, 所以列表里的元素一律按字符串处理
+  if (isUnknownArray(value))
+    return value.flatMap((entry) => codepointRow(listRowText(entry)) ?? []);
+  // CE 只有 Number 是固定码位, 其它标量会先 toString 再按字符行处理
+  if (typeof value !== "number") return codepointRow(listRowText(value));
   const single = decodeCodepoint(value);
   return single === undefined ? undefined : [single];
 }
@@ -158,7 +189,8 @@ function parseGrid(
     const [fieldName, value] = charsEntry;
     let rows: Array<readonly (number | undefined)[]>;
     if (isUnknownArray(value)) {
-      rows = value.map((row) => codepointRow(row) ?? []);
+      // chars 的每个元素是一行, 元素先按 CE 的 toString 语义转成字符串
+      rows = value.map((row) => codepointRow(listRowText(row)) ?? []);
     } else {
       rows = [codepointRow(value) ?? []];
     }
@@ -251,18 +283,8 @@ function parseReference(
   }
   const row = integer(raw.row) ?? rowFromRef ?? 0;
   const column = integer(raw.col) ?? columnFromRef ?? 0;
-  if (raw.column !== undefined) {
-    issues.push(
-      issue(
-        source,
-        "legacy-column",
-        Messages.src.config.image.parser.text0003,
-        "warning",
-        "column",
-      ),
-    );
-  }
-  if (!target || row < 0 || column < 0) {
+  // CE: row/col 走 getInt, 没有下限, 负数不报错
+  if (!target) {
     issues.push(
       issue(
         source,
@@ -299,7 +321,8 @@ async function parseBitmap(
     rawFile || "missing.png",
     "minecraft",
   );
-  let filePath = unnormalizedPath.replace(/^textures\//u, "");
+  // CE 直接拼 assets/<ns>/textures/<value>, 不剥离开头的 textures/
+  let filePath = unnormalizedPath;
   if (!filePath.endsWith(".png")) filePath += ".png";
   const file = `${fileNamespace}:${filePath}`;
   const rawFont =
@@ -410,23 +433,6 @@ async function parseBitmap(
     );
   }
 
-  for (const candidate of candidates) {
-    if (candidate.width === undefined || candidate.height === undefined)
-      continue;
-    const cellWidth = Math.floor(candidate.width / grid.columns);
-    const cellHeight = Math.floor(candidate.height / grid.rows);
-    if (cellWidth > 256 || cellHeight > 256) {
-      issues.push(
-        issue(
-          source,
-          "glyph-too-large",
-          Messages.src.config.image.parser.text0013(cellWidth, cellHeight),
-          "error",
-          "file",
-        ),
-      );
-    }
-  }
   return {
     kind: "bitmap",
     file,
@@ -728,28 +734,19 @@ export async function buildImageIndex(
     const id = makeIdentifier(candidate.rawId, source.pack.namespace);
     const [namespace, value] = splitIdentifier(id, source.pack.namespace);
     const localIssues: CoreIssue[] = [];
-    if (!isValidIdentifier(id)) {
+    for (const key of Object.keys(candidate.value)) {
+      if (imageSchemaFieldForName(key)) continue;
+      // 文件声明版本早于该键被删除的版本时, 当时合法的旧键不算未知字段
+      if (legacyKeyAccepted(key, options.configVersion)) continue;
       localIssues.push(
         issue(
           source,
-          "invalid-image-id",
-          Messages.src.config.image.parser.text0022(id),
-          "error",
+          "unknown-image-field",
+          Messages.src.config.image.parser.text0023(key),
+          "warning",
+          key,
         ),
       );
-    }
-    for (const key of Object.keys(candidate.value)) {
-      if (!imageSchemaFieldForName(key) && key !== "column") {
-        localIssues.push(
-          issue(
-            source,
-            "unknown-image-field",
-            Messages.src.config.image.parser.text0023(key),
-            "warning",
-            key,
-          ),
-        );
-      }
     }
     const spec =
       typeof candidate.value.ref === "string"

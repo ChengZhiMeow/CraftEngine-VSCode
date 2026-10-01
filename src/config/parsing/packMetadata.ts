@@ -36,15 +36,30 @@ export function craftEngineBoolean(value: unknown): boolean {
         );
     }
   }
+  // CraftEngine 只接受固定的这几种大小写写法, 不做法式忽略大小写
   if (typeof value === "string") {
-    switch (value.toLowerCase()) {
+    switch (value) {
+      case "1":
       case "true":
+      case "True":
+      case "TRUE":
       case "yes":
+      case "YES":
+      case "Yes":
       case "on":
+      case "ON":
+      case "On":
         return true;
+      case "0":
       case "false":
+      case "False":
+      case "FALSE":
       case "no":
+      case "NO":
+      case "No":
       case "off":
+      case "OFF":
+      case "Off":
         return false;
     }
   }

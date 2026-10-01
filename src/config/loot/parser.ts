@@ -1,8 +1,5 @@
 import type { CoreIssue } from "../../diagnostics/model.js";
-import {
-  validateVanillaBlockState,
-  type VanillaBlockStateCatalog,
-} from "../../minecraft/block/states.js";
+import type { VanillaBlockStateCatalog } from "../../minecraft/block/states.js";
 import { groupBy } from "../../util/collections.js";
 import {
   isValidIdentifier,
@@ -31,6 +28,7 @@ import type {
 } from "../model.js";
 import type { LootDefinition } from "./model.js";
 import { validateNumberProviderValue } from "../number-provider/schema.js";
+import { craftEngineBoolean } from "../parsing/packMetadata.js";
 
 import { Messages } from "../../messages.js";
 export interface LootBuildOptions {
@@ -77,6 +75,18 @@ function fieldValue(
   );
 }
 
+function selectedValue(
+  raw: Readonly<Record<string, unknown>>,
+  names: readonly string[],
+): readonly [name: string, value: unknown] | undefined {
+  for (const name of names) {
+    // 只能读自有属性: YAML 映射承载在普通对象上, 原型链上的同名键不是配置
+    const value = Object.hasOwn(raw, name) ? raw[name] : undefined;
+    if (value !== null && value !== undefined) return [name, value];
+  }
+  return undefined;
+}
+
 function validateKnownFields(
   raw: Readonly<Record<string, unknown>>,
   fields: readonly SchemaField[],
@@ -90,9 +100,9 @@ function validateKnownFields(
   const known = new Set([
     ...fields.flatMap((candidate) => [candidate.label, ...candidate.aliases]),
     ...extraKnown,
-  ]);
+  ].map((name) => name.replaceAll("-", "_")));
   for (const key of Object.keys(raw)) {
-    if (known.has(key)) continue;
+    if (known.has(key.replaceAll("-", "_"))) continue;
     switch (key) {
       case "template":
       case "templates":
@@ -113,8 +123,13 @@ function validateKnownFields(
     );
   }
   for (const candidate of fields) {
-    const present = [candidate.label, ...candidate.aliases].filter((name) =>
-      Object.hasOwn(raw, name),
+    const accepted = new Set(
+      [candidate.label, ...candidate.aliases].map((name) =>
+        name.replaceAll("-", "_"),
+      ),
+    );
+    const present = Object.keys(raw).filter((name) =>
+      accepted.has(name.replaceAll("-", "_")),
     );
     if (candidate.required && present.length === 0)
       issues.push(
@@ -430,13 +445,15 @@ function validateFunctions(
           : Messages.src.config.loot.parser.text0023,
         issues,
       );
-      validateConditions(
-        entry.conditions,
-        source,
-        at(entryPath, "conditions"),
-        options,
-        issues,
-      );
+      const conditions = selectedValue(entry, ["condition", "conditions"]);
+      if (conditions)
+        validateConditions(
+          conditions[1],
+          source,
+          at(entryPath, conditions[0]),
+          options,
+          issues,
+        );
       if (type === "apply_bonus" && entry.formula !== undefined)
         validateFormula(
           entry.formula,
@@ -562,13 +579,15 @@ function validateEntries(
             true,
           ),
         );
-      validateConditions(
-        entry.conditions,
-        source,
-        at(entryPath, "conditions"),
-        options,
-        issues,
-      );
+      const conditions = selectedValue(entry, ["condition", "conditions"]);
+      if (conditions)
+        validateConditions(
+          conditions[1],
+          source,
+          at(entryPath, conditions[0]),
+          options,
+          issues,
+        );
       validateFunctions(
         entry.functions,
         source,
@@ -597,10 +616,15 @@ function validateEntries(
               issues,
             );
         }
-      const itemKey = Object.hasOwn(entry, "item")
-        ? "item"
-        : Object.hasOwn(entry, "id")
-          ? "id"
+      // 只有 item / furniture_item 条目里的 item|id 是原版物品 ID;
+      // loot_table 的 id 指向战利品表, function 的 run 里才是函数, 都不能按物品校验
+      const itemKey =
+        type === "item" || type === "furniture_item"
+          ? Object.hasOwn(entry, "item")
+            ? "item"
+            : Object.hasOwn(entry, "id")
+              ? "id"
+              : undefined
           : undefined;
       if (itemKey) {
         if (typeof entry[itemKey] !== "string")
@@ -731,13 +755,15 @@ export function validateLootTable(
         Messages.src.config.loot.parser.text0042,
         issues,
       );
-      validateConditions(
-        pool.conditions,
-        source,
-        at(poolPath, "conditions"),
-        options,
-        issues,
-      );
+      const conditions = selectedValue(pool, ["condition", "conditions"]);
+      if (conditions)
+        validateConditions(
+          conditions[1],
+          source,
+          at(poolPath, conditions[0]),
+          options,
+          issues,
+        );
       validateEntries(
         pool.entries,
         source,
@@ -773,17 +799,8 @@ function validateVanillaLoot(
   options: LootBuildOptions,
 ): readonly CoreIssue[] {
   if (candidate.kind !== "vanilla-loot") return [];
+  const id = candidate.rawId;
   const issues: CoreIssue[] = [];
-  const id = makeIdentifier(candidate.rawId, candidate.source.pack.namespace);
-  if (!isValidIdentifier(id))
-    issues.push(
-      issue(
-        candidate.source,
-        "invalid-vanilla-loot-id",
-        Messages.src.config.loot.parser.text0043(id),
-        "error",
-      ),
-    );
   if (!isRecord(candidate.value)) {
     issues.push(
       issue(
@@ -807,68 +824,93 @@ function validateVanillaLoot(
     Messages.src.config.loot.parser.text0045(id),
     issues,
   );
-  let type: string | undefined;
-  if (typeof raw.type !== "string" || raw.type.trim() === "") {
-    issues.push(
-      issue(
-        candidate.source,
-        "missing-loot-type",
-        Messages.src.config.loot.parser.text0006(
-          Messages.src.config.loot.parser.text0046,
-        ),
-        "error",
-      ),
-    );
-  } else {
-    const normalizedType = raw.type.toLowerCase();
-    if ((VANILLA_LOOT_TYPES as readonly string[]).includes(normalizedType))
-      type = normalizedType;
-    else
+  const parsedType = validateType(
+    raw,
+    VANILLA_LOOT_TYPES,
+    candidate.source,
+    "",
+    Messages.src.config.loot.parser.text0046,
+    options,
+    issues,
+  );
+  const type =
+    parsedType === "block"
+      ? "block_break"
+      : parsedType === "entity"
+        ? "entity_death"
+        : parsedType === "shear_block"
+          ? "block_shear"
+          : parsedType;
+
+  if (raw.override !== undefined) {
+    try {
+      craftEngineBoolean(raw.override);
+    } catch {
       issues.push(
         issue(
           candidate.source,
-          "unknown-loot-type",
-          Messages.src.config.loot.parser.text0007(
-            Messages.src.config.loot.parser.text0046,
-            raw.type,
-          ),
+          "invalid-vanilla-loot-override",
+          Messages.src.config.loot.parser.text0047,
           "error",
-          "type",
+          "override",
         ),
       );
+    }
   }
-  if (raw.override !== undefined && typeof raw.override !== "boolean")
-    issues.push(
-      issue(
-        candidate.source,
-        "invalid-vanilla-loot-override",
-        Messages.src.config.loot.parser.text0047,
-        "error",
-        "override",
-      ),
-    );
 
-  const targets =
-    raw.target === undefined
-      ? []
-      : isUnknownArray(raw.target)
-        ? raw.target
-        : [raw.target];
-  if (targets.length === 0 && raw.target !== undefined)
+  const overwrite = raw.overwrite;
+  if (overwrite !== undefined) {
+    const tokens = isUnknownArray(overwrite) ? overwrite : [overwrite];
+    tokens.forEach((token, index) => {
+      const fieldPath = isUnknownArray(overwrite)
+        ? `overwrite.${index}`
+        : "overwrite";
+      if (
+        typeof token !== "string" ||
+        !["none", "all", "items", "item", "experience", "exp"].includes(
+          token.toLowerCase(),
+        )
+      )
+        issues.push(
+          issue(
+            candidate.source,
+            "invalid-loot-source-overwrite",
+            `Loot Source ${id} 的 overwrite 仅支持 none、all、items、item、experience 或 exp`,
+            "error",
+            fieldPath,
+          ),
+        );
+    });
+  }
+
+  const selectedTarget = selectedValue(raw, ["target", "targets"]);
+  const targets = selectedTarget
+    ? isUnknownArray(selectedTarget[1])
+      ? selectedTarget[1]
+      : [selectedTarget[1]]
+    : [];
+  if (
+    selectedTarget &&
+    (type === "fishing" || type === "piglin_barter")
+  )
     issues.push(
       issue(
         candidate.source,
-        "empty-vanilla-loot-target",
-        Messages.src.config.loot.parser.text0048,
-        "warning",
-        "target",
+        "loot-source-target-not-allowed",
+        `Loot Source 类型 ${type} 不允许配置 target`,
+        "error",
+        selectedTarget[0],
       ),
     );
   targets.forEach((target, index) => {
-    const targetPath = isUnknownArray(raw.target)
-      ? `target.${index}`
-      : "target";
-    if (typeof target !== "string" || target.trim() === "") {
+    const targetPath =
+      selectedTarget && isUnknownArray(selectedTarget[1])
+        ? `${selectedTarget[0]}.${index}`
+        : (selectedTarget?.[0] ?? "target");
+    if (
+      !["string", "number", "boolean"].includes(typeof target) ||
+      String(target).trim() === ""
+    ) {
       issues.push(
         issue(
           candidate.source,
@@ -880,48 +922,38 @@ function validateVanillaLoot(
       );
       return;
     }
-    if (type === "block" && options.vanillaBlocks) {
-      for (const problem of validateVanillaBlockState(
-        target,
-        options.vanillaBlocks,
-        options.vanillaBlockStates,
-      ))
-        issues.push(
-          issue(
-            candidate.source,
-            problem.code,
-            problem.message,
-            "error",
-            targetPath,
-          ),
-        );
-    } else if (type === "entity") {
-      const entity = makeIdentifier(target, "minecraft");
-      if (!isValidIdentifier(entity))
-        issues.push(
-          issue(
-            candidate.source,
-            "invalid-vanilla-loot-target",
-            Messages.src.config.loot.parser.text0050(entity),
-            "error",
-            targetPath,
-          ),
-        );
-      else if (
-        options.vanillaEntityTypes &&
-        !options.vanillaEntityTypes.has(entity)
-      )
-        issues.push(
-          issue(
-            candidate.source,
-            "unknown-vanilla-loot-entity",
-            Messages.src.config.loot.parser.text0051(entity),
-            "error",
-            targetPath,
-          ),
-        );
-    }
+    if (String(target).includes("["))
+      issues.push(
+        issue(
+          candidate.source,
+          "invalid-loot-source-target",
+          `Loot Source ${id} 的 target 只能是 Key，不能携带方块状态属性`,
+          "error",
+          targetPath,
+        ),
+      );
+    const targetId = makeIdentifier(String(target).toLowerCase(), "minecraft");
+    if (!isValidIdentifier(targetId))
+      issues.push(
+        issue(
+          candidate.source,
+          "invalid-loot-source-target",
+          Messages.src.config.loot.parser.text0049,
+          "error",
+          targetPath,
+        ),
+      );
   });
+
+  const selectedConditions = selectedValue(raw, ["condition", "conditions"]);
+  if (selectedConditions)
+    validateConditions(
+      selectedConditions[1],
+      candidate.source,
+      selectedConditions[0],
+      options,
+      issues,
+    );
 
   const lootKey = Object.hasOwn(raw, "loot")
     ? "loot"
@@ -930,8 +962,19 @@ function validateVanillaLoot(
       : undefined;
   if (lootKey) {
     const loot = raw[lootKey];
-    if (typeof loot === "string") {
-      const lootId = makeIdentifier(loot.toLowerCase(), "minecraft");
+    if (isRecord(loot))
+      issues.push(
+        ...validateLootTable(loot, candidate.source, lootKey, options),
+      );
+    else if (
+      typeof loot !== "string" &&
+      typeof loot !== "number" &&
+      typeof loot !== "boolean" &&
+      typeof loot !== "bigint"
+    )
+      issues.push(...validateLootTable(loot, candidate.source, lootKey, options));
+    else {
+      const lootId = makeIdentifier(String(loot).toLowerCase(), "minecraft");
       if (!isValidIdentifier(lootId))
         issues.push(
           issue(
@@ -942,10 +985,7 @@ function validateVanillaLoot(
             lootKey,
           ),
         );
-    } else
-      issues.push(
-        ...validateLootTable(loot, candidate.source, lootKey, options),
-      );
+    }
   }
   return issues;
 }
@@ -958,17 +998,6 @@ export function buildLootIndex(
   const lootTables = configurations.flatMap((candidate) => {
     if (candidate.kind !== "loot" || !isRecord(candidate.value)) return [];
     const id = makeIdentifier(candidate.rawId, candidate.source.pack.namespace);
-    if (!isValidIdentifier(id)) {
-      issues.push(
-        issue(
-          candidate.source,
-          "invalid-loot-id",
-          Messages.src.config.loot.parser.text0053(id),
-          "error",
-        ),
-      );
-      return [];
-    }
     issues.push(
       ...validateLootTable(candidate.value, candidate.source, "", options),
     );

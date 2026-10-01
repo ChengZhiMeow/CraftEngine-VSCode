@@ -1,4 +1,7 @@
-import { evaluateExpression } from "../expression/evaluator.js";
+import {
+  evaluateExpression,
+  isExpressionSyntax,
+} from "../expression/evaluator.js";
 import { resolveFunctionOrConditionType } from "../item/schema.js";
 import {
   miscResourceFieldsForContext,
@@ -6,11 +9,11 @@ import {
   resolveMiscResourceSection,
 } from "../resource/schema.js";
 import type { ConfigurationCandidateInput } from "../model.js";
+import { CURRENT_CONFIG_VERSION } from "../registry/legacyKeys.js";
 import type { SchemaContext, SchemaField } from "../schema/types.js";
 import type { CoreIssue } from "../../diagnostics/model.js";
 import { isRecord } from "../../util/records.js";
 import {
-  finiteSchemaNumber,
   validateSchema,
   type SchemaConstraintResult,
 } from "./schema.js";
@@ -41,6 +44,13 @@ import {
 } from "./shared.js";
 
 import { Messages } from "../../messages.js";
+  // 这三类 section 由 opaque 校验器接管, 收集端与校验端共用同一份白名单
+export const MISC_OPAQUE_SECTIONS: ReadonlySet<string> = new Set([
+  "block-state-mappings",
+  "skip-optimization",
+  "damage-rules",
+]);
+
 export function miscSectionForKind(
   kind: ConfigurationCandidateInput["kind"],
 ): string | undefined {
@@ -53,6 +63,16 @@ export function miscSectionForKind(
       return "paintings";
     case "advancement":
       return "advancements";
+    case "entity":
+      return "entities";
+    case "attribute":
+      return "attributes";
+    case "attribute-operation":
+      return "attribute-operations";
+    case "equipment-set":
+      return "equipment-sets";
+    case "atlas":
+      return "atlases";
     default:
       return undefined;
   }
@@ -74,9 +94,20 @@ function miscFields(
     .filter((part) => !/^\d+$/u.test(part))
     .map((part) => part.replaceAll("-", "_"));
   const additions: SchemaField[] = [];
+  const placeholder = base.find((field) => /^<[^>]+>$/u.test(field.label));
+  if (placeholder && isRecord(node)) {
+    for (const key of Object.keys(node)) {
+      if (exactFieldForName(key, base)) continue;
+      additions.push(dynamicValidationField(placeholder, key));
+    }
+    return [
+      ...exactFields(base.filter((field) => field !== placeholder)),
+      ...additions,
+    ];
+  }
   const categoryPropertyIndex = compact.lastIndexOf("properties");
   const categoryPropertyPayload =
-    resolveMiscResourceSection(section) === "category" &&
+    resolveMiscResourceSection(section) === "categories" &&
     categoryPropertyIndex >= 0 &&
     compact.length > categoryPropertyIndex + 1 &&
     (context.ancestorTypes ?? []).some(
@@ -86,7 +117,7 @@ function miscFields(
     );
   if (categoryPropertyPayload) return [];
   if (
-    resolveMiscResourceSection(section) === "emoji" &&
+    resolveMiscResourceSection(section) === "emojis" &&
     compact.at(-1) === "content_overrides" &&
     isRecord(node)
   ) {
@@ -108,7 +139,7 @@ function miscFields(
     }
   }
   if (
-    resolveMiscResourceSection(section) === "category" &&
+    resolveMiscResourceSection(section) === "categories" &&
     compact.at(-1) === "properties" &&
     (context.ancestorTypes ?? []).some(
       (type) =>
@@ -141,6 +172,75 @@ function miscConstraint(
   );
   if (boolean) return boolean;
   const semantic = originalSemantic(context.field);
+  let configNumber: number | undefined;
+  if (context.field.valueProvider === "number") {
+    if (typeof context.value === "number") configNumber = context.value;
+    else if (typeof context.value === "boolean")
+      configNumber = context.value ? 1 : 0;
+    else if (typeof context.value === "string" && context.value.trim() !== "") {
+      const literal = Number(context.value.trim().replaceAll("_", ""));
+      if (context.value.trim() === "NaN") configNumber = Number.NaN;
+      else if (!Number.isNaN(literal)) configNumber = literal;
+      else {
+        try {
+          const evaluated = evaluateExpression(context.value);
+          if (typeof evaluated === "number") configNumber = evaluated;
+        } catch {
+          // 表达式求值失败时保持 configNumber 未定义, 交给后续分支判断
+        }
+      }
+    }
+  }
+  if (
+    (candidate.kind === "attribute" ||
+      candidate.kind === "attribute-operation") &&
+    typeof context.value === "string"
+  ) {
+    const path = compactPath(context.path).map((part) =>
+      part.replaceAll("-", "_"),
+    );
+    let expression = context.value;
+    let variables: Readonly<Record<string, unknown>> | undefined;
+    if (candidate.kind === "attribute-operation" && semantic === "expression")
+      variables = { base: 0, current: 0, amount: 0 };
+    else if (
+      semantic === "transform" ||
+      (semantic === "expression" && path.includes("transform"))
+    )
+      variables = { value: 0 };
+    else if (
+      semantic === "derived" ||
+      (semantic === "expression" && path.includes("derived"))
+    ) {
+      const derivedVariables: Record<string, number> = {};
+      let index = 0;
+      expression = expression.replace(
+        /(?<![a-z0-9_./-])([a-z0-9_.-]+:[a-z0-9_./-]+)(?![a-z0-9_./-])/gu,
+        () => {
+          const variable = `__attribute_${index}`;
+          index += 1;
+          derivedVariables[variable] = 0;
+          return variable;
+        },
+      );
+      variables = derivedVariables;
+    } else if (
+      (semantic === "value" && path.includes("sync")) ||
+      (semantic === "expression" && path.includes("value"))
+    )
+      variables = { value: 0, base: 0 };
+
+    if (variables) {
+      if (!isExpressionSyntax(expression, variables))
+        return oneProblem(
+          problem(
+            "invalid-attribute-expression",
+            `${candidateLabel(candidate)} ${context.fieldPath} 不是有效的 Sparrow Expression`,
+          ),
+        );
+      return { replaceBuiltIn: true };
+    }
+  }
   if (
     semantic === "type" &&
     context.field.values &&
@@ -150,14 +250,14 @@ function miscConstraint(
         ? context.value.slice("craftengine:".length)
         : context.value,
     ) ||
-      context.value.includes(":"))
+      (candidate.kind !== "atlas" && context.value.includes(":")))
   )
     return { replaceBuiltIn: true };
   if (
     candidate.kind === "painting" &&
     (semantic === "width" || semantic === "height")
   ) {
-    const value = finiteSchemaNumber(context.value);
+    const value = configNumber;
     if (
       value !== undefined &&
       (!Number.isInteger(value) || value < 1 || value > 16)
@@ -172,6 +272,21 @@ function miscConstraint(
         ),
       );
     }
+  }
+  if (configNumber !== undefined) return { replaceBuiltIn: true };
+  if (
+    candidate.kind === "equipment-set" &&
+    dynamicKey(context.field) !== undefined &&
+    compactPath(context.path).includes("pieces")
+  ) {
+    const pieces = Number(context.fieldName);
+    if (!Number.isInteger(pieces) || pieces < 1)
+      return oneProblem(
+        problem(
+          "invalid-equipment-set-piece-count",
+          `${candidateLabel(candidate)} 的 pieces 键必须是大于等于 1 的整数`,
+        ),
+      );
   }
   if (candidate.kind === "emoji") {
     if (dynamicKey(context.field) !== undefined) {
@@ -310,6 +425,7 @@ function miscConstraint(
 export function validateMiscCandidate(
   candidate: ConfigurationCandidateInput,
   section: string,
+  configVersion: number = CURRENT_CONFIG_VERSION,
 ): readonly CoreIssue[] {
   const issues = [
     ...validateSchema({
@@ -319,11 +435,17 @@ export function validateMiscCandidate(
       domainLabel: candidateLabel(candidate),
       fieldsForContext: (context) =>
         miscFields(section, candidate.value, context, 1),
+      configVersion,
       issueCodes: issueCodes(
         candidateDomain(candidate.kind as ValidatedCandidateKind),
       ),
       unknownField: (context) => {
         if (candidate.kind === "advancement") return "skip";
+        if (
+          candidate.kind === "entity" &&
+          compactPath(context.path).at(-1) === "settings"
+        )
+          return "skip";
         if (
           candidate.kind === "category" &&
           compactPath(context.path).at(-1) === "properties" &&

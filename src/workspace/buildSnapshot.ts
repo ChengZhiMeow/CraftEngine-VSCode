@@ -32,15 +32,24 @@ import {
 import type { WorkspaceStandaloneDescriptor } from "../config/documents/ownership.js";
 import type { VanillaCatalog, VanillaSoundCatalog } from "../minecraft/catalog.js";
 import {
-  collectCrossDomainReferences,
-  validateCrossDomainReferences,
+  analyzeCrossDomainReferences,
   type CrossDomainReferenceInput,
 } from "../references/crossDomain.js";
+import {
+  blueprintIssues,
+  collectBlueprintReferences,
+  collectScriptReferences,
+  emptyBlueprintCatalog,
+  emptyScriptCatalog,
+  scriptIssues,
+  type BlueprintCatalog,
+  type ScriptCatalog,
+} from "../references/blueprintScript.js";
 import { validateBlockResources } from "../resources/block.js";
 import { validateItemResources } from "../resources/item.js";
 import type { ResourceFileCatalog } from "../resources/model.js";
 import { deduplicateCoreIssues } from "../util/issues.js";
-import type { WorkspaceIndex } from "./model.js";
+import type { WorkspaceDocumentIndex, WorkspaceIndex } from "./model.js";
 
 export interface ParsedWorkspaceStandaloneFile
   extends WorkspaceStandaloneDescriptor {
@@ -55,8 +64,13 @@ export interface WorkspaceSnapshotBuildInput {
   readonly standaloneFiles: readonly ParsedWorkspaceStandaloneFile[];
   readonly parsedFiles: ReadonlyMap<string, ParsedYamlFile>;
   readonly resources: ResourceFileCatalog;
+  readonly packs: readonly PackSource[];
+  readonly scripts: ScriptCatalog;
+  readonly blueprints: BlueprintCatalog;
   readonly resourceRoots: readonly string[];
   readonly generation: number;
+  // 工作区 config.yml 声明的版本, 用于放宽老版本里被删掉的键
+  readonly configVersion: number;
   readonly includeInactiveDiagnostics: boolean;
   readonly unknownExtensionSyntax: "ignore" | "warning";
   readonly textureResolver: ImageBuildOptions["textureResolver"];
@@ -86,11 +100,80 @@ export function emptyWorkspaceSnapshot(): WorkspaceIndex {
     crossDomainReferences: [],
     opaqueSections: [],
     resources: { files: [], byKind: new Map(), byKey: new Map() },
+    scripts: emptyScriptCatalog(),
+    blueprints: emptyBlueprintCatalog(),
+    blueprintReferences: [],
+    scriptReferences: [],
+    documents: new Map(),
     issues: [],
     parsedFiles: new Map(),
     resourceRoots: [],
     generation: 0,
   };
+}
+
+type MutableDocumentIndex = {
+  -readonly [Key in keyof WorkspaceDocumentIndex]: WorkspaceDocumentIndex[Key] extends
+    readonly (infer Entry)[]
+    ? Entry[]
+    : never;
+};
+
+function emptyDocumentBuckets(): MutableDocumentIndex {
+  return {
+    images: [],
+    items: [],
+    blocks: [],
+    furniture: [],
+    equipments: [],
+    jukeboxSongs: [],
+    lootTables: [],
+    genericResources: [],
+    soundEvents: [],
+    soundDataReferences: [],
+    crossDomainReferences: [],
+    blueprintReferences: [],
+    scriptReferences: [],
+  };
+}
+
+  // 每个文档一份, 避免所有 xxxInDocument 访问器都整仓过一遍
+function documentsByUri(index: WorkspaceIndex): ReadonlyMap<
+  string,
+  WorkspaceDocumentIndex
+> {
+  const documents = new Map<string, MutableDocumentIndex>();
+  const forUri = (uri: string): MutableDocumentIndex => {
+    const existing = documents.get(uri);
+    if (existing) return existing;
+    const created = emptyDocumentBuckets();
+    documents.set(uri, created);
+    return created;
+  };
+  for (const entry of index.images) forUri(entry.source.uri).images.push(entry);
+  for (const entry of index.items) forUri(entry.source.uri).items.push(entry);
+  for (const entry of index.blocks) forUri(entry.source.uri).blocks.push(entry);
+  for (const entry of index.furniture)
+    forUri(entry.source.uri).furniture.push(entry);
+  for (const entry of index.equipments)
+    forUri(entry.source.uri).equipments.push(entry);
+  for (const entry of index.jukeboxSongs)
+    forUri(entry.source.uri).jukeboxSongs.push(entry);
+  for (const entry of index.lootTables)
+    forUri(entry.source.uri).lootTables.push(entry);
+  for (const entry of index.genericResources)
+    forUri(entry.source.uri).genericResources.push(entry);
+  for (const entry of index.soundEvents)
+    forUri(entry.source.uri).soundEvents.push(entry);
+  for (const entry of index.soundDataReferences)
+    forUri(entry.source.uri).soundDataReferences.push(entry);
+  for (const entry of index.crossDomainReferences)
+    forUri(entry.uri).crossDomainReferences.push(entry);
+  for (const entry of index.blueprintReferences)
+    forUri(entry.uri).blueprintReferences.push(entry);
+  for (const entry of index.scriptReferences)
+    forUri(entry.uri).scriptReferences.push(entry);
+  return documents;
 }
 
 export async function buildWorkspaceSnapshot(
@@ -162,6 +245,7 @@ export async function buildWorkspaceSnapshot(
     {
       includeInactiveDiagnostics: input.includeInactiveDiagnostics,
       textureResolver: input.textureResolver,
+      configVersion: input.configVersion,
       knownTexture: (namespace, imagePath) =>
         input.vanillaCatalog?.textures.has(
           `${namespace}:${imagePath.replace(/\.png$/iu, "")}`,
@@ -176,6 +260,7 @@ export async function buildWorkspaceSnapshot(
   const itemIndex = buildItemIndex(configurations, [], {
     includeInactiveDiagnostics: input.includeInactiveDiagnostics,
     unknownExtensionSyntax: input.unknownExtensionSyntax,
+    configVersion: input.configVersion,
     ...(vanillaItems ? { vanillaMaterials: vanillaItems } : {}),
     ...(input.vanillaCatalog
       ? {
@@ -245,87 +330,120 @@ export async function buildWorkspaceSnapshot(
     includeInactiveDiagnostics: input.includeInactiveDiagnostics,
   };
 
+  const packs = input.packs;
+  const scripts = input.scripts;
+  const blueprints = input.blueprints;
+  const blueprintReferences = collectBlueprintReferences({
+    items: itemIndex.items,
+    blocks: itemIndex.blocks,
+    furniture: itemIndex.furniture,
+  });
+  const scriptReferences = collectScriptReferences([
+    ...itemIndex.items,
+    ...itemIndex.blocks,
+    ...itemIndex.furniture,
+    ...lootIndex.lootTables,
+    ...genericResourceIndex.resources,
+  ]);
+
+  // 引用与诊断来自同一趟 cross-domain 遍历, 重建时只分析一次
+  const crossDomain = analyzeCrossDomainReferences(crossDomainInput);
+
+  const index: WorkspaceIndex = {
+    images: imageIndex.images,
+    resolved: imageIndex.resolved,
+    parsedFiles,
+    resourceRoots: input.resourceRoots,
+    generation: input.generation,
+    templates: expanded.templates,
+    items: itemIndex.items,
+    equipments: equipmentIndex.equipments,
+    jukeboxSongs: jukeboxSongIndex.songs,
+    blocks: itemIndex.blocks,
+    soundEvents: soundIndex.events,
+    soundDataReferences: soundIndex.references,
+    furniture: itemIndex.furniture,
+    lootTables: lootIndex.lootTables,
+    genericResources: genericResourceIndex.resources,
+    crossDomainReferences: crossDomain.references,
+    opaqueSections: expanded.opaqueSections,
+    resources: input.resources,
+    scripts,
+    blueprints,
+    blueprintReferences,
+    scriptReferences,
+    documents: new Map(),
+    issues: deduplicateCoreIssues([
+      ...imageIndex.issues,
+      ...itemIndex.issues,
+      ...equipmentIndex.issues,
+      ...jukeboxSongIndex.issues,
+      ...validateEquipmentReferences(
+        itemIndex.items,
+        equipmentIndex.equipments,
+        input.includeInactiveDiagnostics,
+      ),
+      ...(await validateItemResources(
+        itemIndex.items,
+        input.resources,
+        input.vanillaCatalog,
+        input.includeInactiveDiagnostics,
+        [...itemIndex.blocks, ...itemIndex.furniture],
+      )),
+      ...(await validateBlockResources(
+        itemIndex.blocks,
+        input.resources,
+        input.vanillaCatalog,
+        input.includeInactiveDiagnostics,
+      )),
+      ...soundIndex.issues,
+      ...lootIndex.issues,
+      ...genericResourceIndex.issues,
+      ...crossDomain.issues,
+      ...blueprintIssues(blueprintReferences, blueprints).filter((issue) =>
+        visibleIssue(issue.uri),
+      ),
+      ...scriptIssues(scriptReferences, packs, scripts).filter((issue) =>
+        visibleIssue(issue.uri),
+      ),
+      ...validateExpandedConfigurationSchemas(
+        configurations,
+        expanded.opaqueSections,
+        input.configVersion,
+      ).filter((issue) => visibleIssue(issue.uri)),
+      ...validateDirectParsedConfigurationSections(
+        input.packed,
+        input.configVersion,
+      ).filter((issue) => visibleIssue(issue.uri)),
+      ...input.standaloneFiles.flatMap((file) =>
+        validateStandaloneParsedFile(file.rawParsed, input.configVersion),
+      ),
+      ...globalVariables.issues.filter((issue) => visibleIssue(issue.uri)),
+      ...validateInlineLootValues(
+        [...itemIndex.items, ...itemIndex.blocks, ...itemIndex.furniture],
+        lootIndex.lootTables,
+        lootOptions,
+      ),
+      ...validateTooltipStyles(
+        itemIndex.items,
+        input.resources,
+        input.includeInactiveDiagnostics,
+      ),
+      ...languageConflictIssues(
+        [
+          ...packedWithOpaque,
+          ...input.standaloneFiles.flatMap((file) =>
+            file.kind === "translation" && file.pack
+              ? [{ parsed: file.parsed, pack: file.pack }]
+              : [],
+          ),
+        ],
+        input.includeInactiveDiagnostics,
+      ),
+    ]),
+  };
   return {
-    index: {
-      images: imageIndex.images,
-      resolved: imageIndex.resolved,
-      parsedFiles,
-      resourceRoots: input.resourceRoots,
-      generation: input.generation,
-      templates: expanded.templates,
-      items: itemIndex.items,
-      equipments: equipmentIndex.equipments,
-      jukeboxSongs: jukeboxSongIndex.songs,
-      blocks: itemIndex.blocks,
-      soundEvents: soundIndex.events,
-      soundDataReferences: soundIndex.references,
-      furniture: itemIndex.furniture,
-      lootTables: lootIndex.lootTables,
-      genericResources: genericResourceIndex.resources,
-      crossDomainReferences: collectCrossDomainReferences(crossDomainInput),
-      opaqueSections: expanded.opaqueSections,
-      resources: input.resources,
-      issues: deduplicateCoreIssues([
-        ...imageIndex.issues,
-        ...itemIndex.issues,
-        ...equipmentIndex.issues,
-        ...jukeboxSongIndex.issues,
-        ...validateEquipmentReferences(
-          itemIndex.items,
-          equipmentIndex.equipments,
-          input.includeInactiveDiagnostics,
-        ),
-        ...(await validateItemResources(
-          itemIndex.items,
-          input.resources,
-          input.vanillaCatalog,
-          input.includeInactiveDiagnostics,
-          [...itemIndex.blocks, ...itemIndex.furniture],
-        )),
-        ...(await validateBlockResources(
-          itemIndex.blocks,
-          input.resources,
-          input.vanillaCatalog,
-          input.includeInactiveDiagnostics,
-        )),
-        ...soundIndex.issues,
-        ...lootIndex.issues,
-        ...genericResourceIndex.issues,
-        ...validateCrossDomainReferences(crossDomainInput),
-        ...validateExpandedConfigurationSchemas(
-          configurations,
-          expanded.opaqueSections,
-        ).filter((issue) => visibleIssue(issue.uri)),
-        ...validateDirectParsedConfigurationSections(input.packed).filter(
-          (issue) => visibleIssue(issue.uri),
-        ),
-        ...input.standaloneFiles.flatMap((file) =>
-          validateStandaloneParsedFile(file.rawParsed),
-        ),
-        ...globalVariables.issues.filter((issue) => visibleIssue(issue.uri)),
-        ...validateInlineLootValues(
-          [...itemIndex.items, ...itemIndex.blocks, ...itemIndex.furniture],
-          lootIndex.lootTables,
-          lootOptions,
-        ),
-        ...validateTooltipStyles(
-          itemIndex.items,
-          input.resources,
-          input.includeInactiveDiagnostics,
-        ),
-        ...languageConflictIssues(
-          [
-            ...packedWithOpaque,
-            ...input.standaloneFiles.flatMap((file) =>
-              file.kind === "translation" && file.pack
-                ? [{ parsed: file.parsed, pack: file.pack }]
-                : [],
-            ),
-          ],
-          input.includeInactiveDiagnostics,
-        ),
-      ]),
-    },
+    index: { ...index, documents: documentsByUri(index) },
     globalVariables,
   };
 }

@@ -116,24 +116,28 @@ const requiredString = (
 ): SchemaField => field(label, detail, { aliases, required: true });
 
 export const CONFIG_FILE_TOP_LEVEL_FIELDS: readonly SchemaField[] = [
-  field("config-version", Messages.src.config.schema.configFile.text0001, {
-    values: ["84"],
+  field("___version___", "配置格式版本；旧版本号会被 CraftEngine 自动升级", {
+    aliases: ["config-version"],
+    values: ["114", "84"],
     required: true,
-    snippet: 'config-version: "84"',
+    snippet: '___version___: "114"',
   }),
   bool("metrics", Messages.src.config.schema.configFile.text0002),
   bool("update-checker", Messages.src.config.schema.configFile.text0003),
   field("forced-locale", Messages.src.config.schema.configFile.text0004),
+  mapping("storage", "数据存储后端；用于资源包偏好等数据, 修改后需要重启"),
   mapping("resource-pack", Messages.src.config.schema.configFile.text0005),
   mapping("item", Messages.src.config.schema.configFile.text0006),
   mapping("equipment", Messages.src.config.schema.configFile.text0007),
   mapping("block", Messages.src.config.schema.configFile.text0008),
   mapping("furniture", Messages.src.config.schema.configFile.text0009),
   mapping("emoji", Messages.src.config.schema.configFile.text0010),
-  mapping("loot", Messages.src.config.schema.configFile.text0011),
+  mapping("entity", "外部实体来源和实时实体追踪设置"),
   mapping("image", Messages.src.config.schema.configFile.text0012),
   mapping("network", Messages.src.config.schema.configFile.text0013),
   mapping("recipe", Messages.src.config.schema.configFile.text0014),
+  mapping("attribute", "自定义属性系统与生命值显示缩放"),
+  mapping("damage-indicator", "浮动伤害数字及显示方案"),
   mapping("gui", Messages.src.config.schema.configFile.text0015),
   mapping("chunk-system", Messages.src.config.schema.configFile.text0016),
   mapping(
@@ -142,6 +146,7 @@ export const CONFIG_FILE_TOP_LEVEL_FIELDS: readonly SchemaField[] = [
     { optionalDependency: "Premium" },
   ),
   mapping("misc", Messages.src.config.schema.configFile.text0018),
+  mapping("scripting", "JavaScript 脚本引擎设置"),
   mapping("debug", Messages.src.config.schema.configFile.text0019),
   mapping(
     "bedrock-edition-support",
@@ -149,31 +154,81 @@ export const CONFIG_FILE_TOP_LEVEL_FIELDS: readonly SchemaField[] = [
   ),
 ];
 
-export const CONFIG_HOSTING_TYPES = [
+export const CONFIG_STORAGE_TYPES = [
+  "json",
+  "sqlite",
+  "h2",
+  "mysql",
+  "mariadb",
+  "postgresql",
+  "mongodb",
+] as const;
+
+export const CONFIG_STORAGE_TYPE_DETAILS = {
+  json: "把数据保存到插件数据目录下的 JSON 文件",
+  sqlite: "内置 SQLite；单连接且不读取用户名和密码",
+  h2: "嵌入式 H2；用户名缺键回退 sa",
+  mysql: "MySQL 服务端；需要 url、username、password",
+  mariadb: "MariaDB 服务端；需要 url、username、password",
+  postgresql: "PostgreSQL 服务端；需要 url、username、password",
+  mongodb: "MongoDB 服务端；需要 url、username、password",
+} satisfies Readonly<Record<(typeof CONFIG_STORAGE_TYPES)[number], string>>;
+
+export const CONFIG_PACK_TYPES = [
   "none",
   "self",
   "external",
   "lobfile",
+  "mcpacks",
   "s3",
   "openlist",
   "alist",
   "dropbox",
   "onedrive",
   "gitlab",
+  "self_forward",
 ] as const;
 
-export const CONFIG_HOSTING_TYPE_DETAILS = {
-  none: Messages.src.config.schema.configFile.text0021,
-  self: Messages.src.config.schema.configFile.text0022,
-  external: Messages.src.config.schema.configFile.text0023,
-  lobfile: Messages.src.config.schema.configFile.text0024,
-  s3: Messages.src.config.schema.configFile.text0025,
-  openlist: Messages.src.config.schema.configFile.text0026,
-  alist: Messages.src.config.schema.configFile.text0027,
-  dropbox: Messages.src.config.schema.configFile.text0028,
-  onedrive: Messages.src.config.schema.configFile.text0029,
-  gitlab: Messages.src.config.schema.configFile.text0030,
-} satisfies Readonly<Record<(typeof CONFIG_HOSTING_TYPES)[number], string>>;
+export const CONFIG_PACK_TYPE_DETAILS = {
+  none: "不托管资源包；不生成下载链接",
+  self: "由内置 HTTP 服务器托管；仅消费 storage_path",
+  external: "直接使用已有的公开下载 URL；不上传",
+  lobfile: "托管到 LobFile",
+  mcpacks: "托管到 MCPacks",
+  s3: "托管到 S3 兼容对象存储",
+  openlist: "托管到 OpenList",
+  alist: "托管到 AList",
+  dropbox: "托管到 Dropbox",
+  onedrive: "托管到 OneDrive",
+  gitlab: "托管到 GitLab",
+  self_forward: "由反向代理转发到另一台 CraftEngine 服务器",
+} satisfies Readonly<Record<(typeof CONFIG_PACK_TYPES)[number], string>>;
+
+export const CONFIG_WORKFLOW_STEP_TYPES = [
+  "generate",
+  "load_zip",
+  "export",
+  "packsquash",
+  "validate",
+  "optimize",
+  "zip",
+  "upload",
+  "send_pack",
+] as const;
+
+export const CONFIG_WORKFLOW_STEP_TYPE_DETAILS = {
+  generate: "生成资源包；可选 description 与 map_compatibility",
+  load_zip: "载入已有 ZIP 作为后续步骤的输入；需要 path",
+  export: "把当前资源包导出到 path",
+  packsquash: "调用外部 PackSquash；可用 executable、config、timeout",
+  validate: "校验并修复资源包",
+  optimize: "无损优化 PNG 与 JSON",
+  zip: "打包为最终 ZIP；可用 path、protection、store-png",
+  upload: "上传 ZIP 到指定资源包；需要 pack 与 path",
+  send_pack: "向在线玩家发送指定资源包；需要 pack",
+} satisfies Readonly<
+  Record<(typeof CONFIG_WORKFLOW_STEP_TYPES)[number], string>
+>;
 
 export const CONFIG_PATH_MATCHER_TYPES = [
   "any_of",
@@ -232,7 +287,19 @@ const BOOLEAN_FIELDS = (
   );
 
 const RESOURCE_PACK_FIELDS: readonly SchemaField[] = [
-  field("path", Messages.src.config.schema.configFile.text0048),
+  mapping(
+    "workflows",
+    "命名工作流集合；用 /ce workflow <name> 手动运行, 或由 trigger 触发",
+  ),
+  mapping(
+    "packs",
+    "以资源包 ID 为键的托管配置；选中的包按配置顺序发送",
+  ),
+  mapping(
+    "presets",
+    "以预设名为键的资源包 ID 列表；玩家用 /pack preset <name> 应用",
+  ),
+  mapping("self-host", "self 类型资源包的内置 HTTP 服务器设置"),
   mapping("supported-version", Messages.src.config.schema.configFile.text0049),
   field("description", Messages.src.config.schema.configFile.text0050),
   field("overlay-format", Messages.src.config.schema.configFile.text0051),
@@ -250,6 +317,10 @@ const RESOURCE_PACK_FIELDS: readonly SchemaField[] = [
     Messages.src.config.schema.configFile.text0055,
   ),
   bool(
+    "cache-resource-files",
+    "在内存中缓存资源文件以加速资源包生成",
+  ),
+  bool(
     "remove-tinted-leaves-particle",
     Messages.src.config.schema.configFile.text0056,
   ),
@@ -257,10 +328,6 @@ const RESOURCE_PACK_FIELDS: readonly SchemaField[] = [
   bool("exclude-core-shaders", Messages.src.config.schema.configFile.text0058),
   mapping("validation", Messages.src.config.schema.configFile.text0059),
   mapping("optimization", Messages.src.config.schema.configFile.text0060),
-  mapping(
-    "map-plugin-compatibility",
-    Messages.src.config.schema.configFile.text0061,
-  ),
   mapping("pack-squash", Messages.src.config.schema.configFile.text0062),
   mapping("protection", Messages.src.config.schema.configFile.text0063, {
     optionalDependency: "Premium",
@@ -284,20 +351,10 @@ const DELIVERY_FIELDS: readonly SchemaField[] = [
     "strict-player-uuid-validation",
     Messages.src.config.schema.configFile.text0070,
   ),
-  bool("auto-upload", Messages.src.config.schema.configFile.text0071),
-  bool("resend-on-upload", Messages.src.config.schema.configFile.text0072),
-  field("file-to-upload", Messages.src.config.schema.configFile.text0073),
   mapping("proxy", Messages.src.config.schema.configFile.text0074),
-  list("hosting", Messages.src.config.schema.configFile.text0075, {
-    snippet:
-      "hosting:\n  - type: ${1|self,external,lobfile,s3,openlist,alist,dropbox,onedrive,gitlab,none|}\n    ${0}",
-  }),
 ];
 
 const PROTECTION_FIELDS: readonly SchemaField[] = [
-  mapping("unprotected-copy", Messages.src.config.schema.configFile.text0076, {
-    optionalDependency: "Premium",
-  }),
   mapping("crash-tools", Messages.src.config.schema.configFile.text0077),
   bool("incorrect-crc", Messages.src.config.schema.configFile.text0078),
   bool("fake-file-size", Messages.src.config.schema.configFile.text0079),
@@ -339,6 +396,7 @@ const ITEM_FIELDS: readonly SchemaField[] = [
   field("default-material", Messages.src.config.schema.configFile.text0101, {
     valueProvider: "material",
   }),
+  mapping("break-power", "按物品 ID 覆盖原版物品的方块破坏等级"),
   mapping("update-triggers", Messages.src.config.schema.configFile.text0102),
   mapping(
     "custom-model-data-starting-value",
@@ -449,9 +507,156 @@ const GUI_RECIPE_KINDS = [
   "brewing",
 ] as const;
 
+const STORAGE_FIELDS: readonly SchemaField[] = [
+  enumField("type", "数据存储后端类型；修改后需要重启", CONFIG_STORAGE_TYPES, {
+    valueDetails: CONFIG_STORAGE_TYPE_DETAILS,
+    snippet: "type: ${1|json,sqlite,h2,mysql,mariadb,postgresql,mongodb|}",
+  }),
+  field("url", "JDBC 连接 URL；相对路径以服务器工作目录为基准", {
+    snippet: 'url: "jdbc:sqlite:./plugins/CraftEngine/data.db"',
+  }),
+  field("username", "数据库用户名；H2 缺键回退 sa"),
+  field("password", "数据库密码；缺键回退空字符串"),
+  number("pool_size", "连接池大小；SQLite 强制为 1, 缺键回退 4", {
+    aliases: ["pool-size"],
+  }),
+  field(
+    "directory",
+    "仅 json 后端使用；相对路径以插件数据目录为基准, 缺键回退 data/json",
+  ),
+];
+
+const SELF_RATE_LIMIT_FIELDS: readonly SchemaField[] = [
+  field("qps_per_ip", Messages.src.config.schema.configFile.text0347, {
+    aliases: ["qps-per-ip"],
+  }),
+  number(
+    "max_bandwidth_per_second",
+    Messages.src.config.schema.configFile.text0348,
+    {
+      aliases: ["max-bandwidth-per-second"],
+    },
+  ),
+  number(
+    "min_download_speed_per_player",
+    Messages.src.config.schema.configFile.text0349,
+    {
+      aliases: ["min-download-speed-per-player"],
+    },
+  ),
+];
+
+const SELF_HOST_FIELDS: readonly SchemaField[] = [
+  field("ip", Messages.src.config.schema.configFile.text0295, {
+    snippet: "ip: ${1:auto}",
+  }),
+  enumField("port", Messages.src.config.schema.configFile.text0296, ["auto"]),
+  field("url", Messages.src.config.schema.configFile.text0297),
+  // CraftEngine 只按字符串读取, 不做取值校验, 因此这里不限定候选取值
+  field("protocol", Messages.src.config.schema.configFile.text0298),
+  bool(
+    "deny_non_minecraft_request",
+    Messages.src.config.schema.configFile.text0299,
+    ["deny-non-minecraft-request"],
+  ),
+  bool("one_time_token", Messages.src.config.schema.configFile.text0300, [
+    "one-time-token",
+  ]),
+  bool("strict_validation", Messages.src.config.schema.configFile.text0301, [
+    "strict-validation",
+  ]),
+  field("forward_secret", "由反向代理转发并校验的共享密钥"),
+  mapping("rate_limiting", Messages.src.config.schema.configFile.text0302, {
+    aliases: ["rate-limiting"],
+  }),
+];
+
+const WORKFLOW_FIELDS: readonly SchemaField[] = [
+  field(
+    "trigger",
+    "触发该工作流的事件名；只有 reload_pack 会被真正触发, 可写单个字符串或字符串列表",
+    {
+      values: ["reload_pack"],
+      snippet: "trigger: ${1|reload_pack|}",
+    },
+  ),
+  list("steps", "按顺序执行的工作流步骤；元素可以是步骤名或步骤映射", {
+    snippet:
+      "steps:\n  - type: ${1|generate,load_zip,export,packsquash,validate,optimize,zip,upload,send_pack|}\n    ${0}",
+  }),
+];
+
+const WORKFLOW_STEP_FIELDS: readonly SchemaField[] = [
+  enumField("type", "工作流步骤类型", CONFIG_WORKFLOW_STEP_TYPES, {
+    required: true,
+    valueDetails: CONFIG_WORKFLOW_STEP_TYPE_DETAILS,
+    snippet:
+      "type: ${1|generate,load_zip,export,packsquash,validate,optimize,zip,upload,send_pack|}",
+  }),
+  field("description", "generate 步骤写入 pack.mcmeta 的资源包描述"),
+  bool(
+    "map_compatibility",
+    "generate 步骤额外生成地图插件兼容资源包",
+    ["map-compatibility"],
+  ),
+  field(
+    "path",
+    "load_zip、export、zip、upload 步骤使用的 ZIP 路径；相对路径以插件数据目录为基准",
+    { snippet: 'path: "./generated/resource_pack.zip"' },
+  ),
+  bool("protection", "zip 步骤生成受保护的 ZIP（Premium）"),
+  bool(
+    "store-png",
+    "zip 步骤跳过 PNG 的外层压缩；画质不变, ZIP 体积可能变大",
+  ),
+  field("pack", "upload 与 send_pack 步骤使用的资源包 ID", {
+    aliases: ["host"],
+    snippet: "pack: default",
+  }),
+  field(
+    "executable",
+    "packsquash 步骤的可执行文件；缺键回退 PATH 中的 packsquash",
+    { snippet: "executable: packsquash" },
+  ),
+  field(
+    "config",
+    "packsquash 步骤的配置文件路径；相对路径以插件数据目录为基准",
+    { snippet: 'config: "./packsquash/config.toml"' },
+  ),
+  number("timeout", "packsquash 步骤的超时秒数；缺键回退 1800"),
+];
+
 const STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
   ["", CONFIG_FILE_TOP_LEVEL_FIELDS],
+  ["storage", STORAGE_FIELDS],
   ["resource_pack", RESOURCE_PACK_FIELDS],
+  [
+    "resource_pack.workflows",
+    [
+      mapping("<name>", "工作流名称；只允许字母、数字、下划线和连字符", {
+        snippet:
+          "<name>:\n  trigger: reload_pack\n  steps:\n    - type: generate\n    - ${0}",
+      }),
+    ],
+  ],
+  [
+    "resource_pack.packs",
+    [
+      mapping("<id>", "资源包 ID；只允许字母、数字、下划线和连字符", {
+        snippet:
+          "<id>:\n  type: ${1|none,self,external,lobfile,mcpacks,s3,openlist,alist,dropbox,onedrive,gitlab,self_forward|}\n  ${0}",
+      }),
+    ],
+  ],
+  [
+    "resource_pack.presets",
+    [list("<name>", "预设名称；只允许字母、数字、下划线和连字符")],
+  ],
+  ["resource_pack.self_host", SELF_HOST_FIELDS],
+  [
+    "resource_pack.self_host.rate_limiting",
+    SELF_RATE_LIMIT_FIELDS,
+  ],
   [
     "resource_pack.supported_version",
     [
@@ -472,7 +677,6 @@ const STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
   [
     "resource_pack.validation",
     [
-      bool("enable", Messages.src.config.schema.configFile.text0123),
       bool("fix-atlas", Messages.src.config.schema.configFile.text0124),
       bool(
         "fix-missing-texture",
@@ -481,6 +685,10 @@ const STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
       mapping(
         "fallback-models",
         Messages.src.config.schema.configFile.text0126,
+      ),
+      bool(
+        "fix-model-uv-out-of-bounds",
+        "把越界的模型 UV 直接夹到 [0, 16]",
       ),
     ],
   ],
@@ -500,7 +708,10 @@ const STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
   [
     "resource_pack.optimization",
     [
-      bool("enable", Messages.src.config.schema.configFile.text0129),
+      number(
+        "cache-size",
+        "内存中保留的优化结果条目数（MiB）；0 在下次优化时清空内存与磁盘缓存",
+      ),
       mapping("texture", Messages.src.config.schema.configFile.text0130),
       mapping("json", Messages.src.config.schema.configFile.text0131),
     ],
@@ -524,13 +735,6 @@ const STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
     ],
   ],
   [
-    "resource_pack.map_plugin_compatibility",
-    [
-      bool("enable", Messages.src.config.schema.configFile.text0137),
-      field("path", Messages.src.config.schema.configFile.text0138),
-    ],
-  ],
-  [
     "resource_pack.pack_squash",
     [
       bool("enable", Messages.src.config.schema.configFile.text0139),
@@ -539,13 +743,6 @@ const STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
     ],
   ],
   ["resource_pack.protection", PROTECTION_FIELDS],
-  [
-    "resource_pack.protection.unprotected_copy",
-    [
-      bool("enable", Messages.src.config.schema.configFile.text0142, []),
-      field("path", Messages.src.config.schema.configFile.text0143),
-    ],
-  ],
   [
     "resource_pack.protection.crash_tools",
     [
@@ -628,6 +825,14 @@ const STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
   ],
   ["item", ITEM_FIELDS],
   [
+    "item.break_power",
+    [
+      number("<item>", "动态物品 ID 对应的破坏等级", {
+        snippet: "${1:minecraft:golden_pickaxe}: ${0:3}",
+      }),
+    ],
+  ],
+  [
     "item.update_triggers",
     [
       bool(
@@ -675,6 +880,7 @@ const STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
         "sacrificed-vanilla-armor",
         Messages.src.config.schema.configFile.text0175,
       ),
+      mapping("lod", "按距离切换 3D 盔甲模型；修改后需要重启"),
     ],
   ],
   [
@@ -697,6 +903,10 @@ const STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
         { valueProvider: "texture" },
       ),
     ],
+  ],
+  [
+    "equipment.lod",
+    [bool("enable", "启用 3D 盔甲模型的距离切换；修改后需要重启")],
   ],
   ["block", BLOCK_FIELDS],
   [
@@ -783,10 +993,6 @@ const STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
   ],
   ["emoji.contexts", BOOLEAN_FIELDS(["chat", "book", "anvil", "sign"])],
   [
-    "loot",
-    [list("entity-sources", Messages.src.config.schema.configFile.text0199)],
-  ],
-  [
     "image",
     [
       mapping(
@@ -823,6 +1029,59 @@ const STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
 
 const ADDITIONAL_STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
   [
+    "entity",
+    [
+      list("id-sources", "提供自定义实体 ID 的外部来源"),
+      mapping("tracking", "实体装备、套装、药水与动态属性追踪"),
+    ],
+  ],
+  [
+    "entity.tracking",
+    [
+      bool("enable", "启用实时实体追踪"),
+      enumField("mode", "实体追踪名单模式", ["whitelist", "blacklist"]),
+      list("list", "追踪名单中的实体 ID"),
+    ],
+  ],
+  [
+    "attribute",
+    [
+      bool("enable", "启用自定义属性系统；修改后需要重启"),
+      mapping("health-scaling", "玩家生命值条显示缩放"),
+    ],
+  ],
+  [
+    "attribute.health_scaling",
+    [
+      bool("enable", "启用玩家生命值条缩放"),
+      number("threshold", "开始缩放的真实最大生命值阈值"),
+      number("visual-max-health", "客户端显示的最大生命值"),
+    ],
+  ],
+  [
+    "damage_indicator",
+    [
+      bool("enable", "启用浮动伤害数字"),
+      enumField("default-visibility", "默认伤害数字可见范围", [
+        "none",
+        "self",
+        "all",
+      ]),
+      bool("disable-vanilla-particles", "取消原版伤害指示粒子"),
+      list("schemes", "按顺序执行的伤害数字显示方案"),
+    ],
+  ],
+  ["scripting", [mapping("js", "JavaScript 脚本系统")]],
+  [
+    "scripting.js",
+    [
+      bool("enable", "启用 JavaScript 脚本系统；修改后需要重启"),
+      enumField("engine", "JavaScript 引擎实现", ["graaljs", "nashorn"]),
+      bool("strict", "启用 JavaScript 严格模式"),
+      bool("nashorn-compat", "GraalJS 的 Nashorn 兼容模式"),
+    ],
+  ],
+  [
     "network",
     [
       bool(
@@ -833,9 +1092,13 @@ const ADDITIONAL_STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
         "disable-item-operations",
         Messages.src.config.schema.configFile.text0207,
       ),
+      mapping(
+        "performance-mode",
+        "在 NMS 数据包阶段而不是 ByteBuffer 阶段处理数据包",
+      ),
       bool(
-        "optimize-item-codec",
-        Messages.src.config.schema.configFile.text0208,
+        "minimize-item-packets",
+        "移除仅用于展示的物品组件以减少数据包体积",
       ),
       mapping(
         "intercept-packets",
@@ -843,6 +1106,14 @@ const ADDITIONAL_STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
       ),
       mapping("mod-channel", Messages.src.config.schema.configFile.text0210),
       mapping("item-crypto", Messages.src.config.schema.configFile.text0211),
+    ],
+  ],
+  [
+    "network.performance_mode",
+    [
+      bool("item", "在 NMS 数据包阶段处理物品组件；修改后需要重启"),
+      bool("entity", "在 NMS 数据包阶段处理实体数据；修改后需要重启"),
+      bool("text", "在 NMS 数据包阶段处理文本组件；修改后需要重启"),
     ],
   ],
   [
@@ -858,12 +1129,11 @@ const ADDITIONAL_STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
       "container",
       "team",
       "scoreboard",
-      "entity-name",
-      "armor-stand",
-      "text-display",
+      "entity-data",
       "item",
       "advancement",
       "player-chat",
+      "combat-kill",
       "dialog",
     ].map((name) =>
       bool(name, Messages.src.config.schema.configFile.text0212(name)),
@@ -883,6 +1153,10 @@ const ADDITIONAL_STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
       number(
         "creative-tab-max-items-per-packet",
         Messages.src.config.schema.configFile.text0215,
+      ),
+      number(
+        "visual-block-states-max-per-packet",
+        "每个 mod channel 数据包发送的最大可视方块状态数",
       ),
     ],
   ],
@@ -920,7 +1194,6 @@ const ADDITIONAL_STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
         "inject-block-entities",
         Messages.src.config.schema.configFile.text0224,
       ),
-      list("entity-sources", Messages.src.config.schema.configFile.text0225),
     ],
   ],
   [
@@ -1055,9 +1328,13 @@ const ADDITIONAL_STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
       enumField(
         "storage-type",
         Messages.src.config.schema.configFile.text0252,
-        ["mca", "pdc", "none"],
+        ["mca", "linear", "pdc", "none"],
       ),
+      list("blacklisted-worlds", "始终使用 none 存储的世界名称正则列表"),
       bool("cache-system", Messages.src.config.schema.configFile.text0253),
+      enumField("cache-mode", "区块缓存的过期方式", ["timed", "lifecycle"]),
+      bool("async-write", "在专用 IO 线程异步写入区块数据"),
+      bool("async-read", "提前异步读取并缓存区块数据"),
       enumField(
         "compression-method",
         Messages.src.config.schema.configFile.text0254,
@@ -1149,6 +1426,14 @@ const ADDITIONAL_STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
     [
       bool("enable", Messages.src.config.schema.configFile.text0272),
       bool("ray-tracing", Messages.src.config.schema.configFile.text0273),
+      bool(
+        "update-display-view-range",
+        "剔除 display 实体时把可视范围设为 0, 而不是移除实体",
+      ),
+      bool(
+        "keep-invisible-hitboxes",
+        "被剔除时保留带 invisible 标记的碰撞箱实体",
+      ),
       number("view-distance", Messages.src.config.schema.configFile.text0274),
       number("threads", Messages.src.config.schema.configFile.text0275),
       mapping("rate-limiting", Messages.src.config.schema.configFile.text0276),
@@ -1185,6 +1470,7 @@ const ADDITIONAL_STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
         Messages.src.config.schema.configFile.text0283,
       ),
       bool("hook-axiompaper", Messages.src.config.schema.configFile.text0284),
+      bool("fix-world-memory-leak", "缓解其他插件导致的世界引用泄漏"),
     ],
   ],
   [
@@ -1213,11 +1499,16 @@ const ADDITIONAL_STATIC_FIELDS = new Map<string, readonly SchemaField[]>([
   ],
 ]);
 
-const HOST_TYPE_FIELD = enumField(
+const PACK_TYPE_FIELD = enumField(
   "type",
   Messages.src.config.schema.configFile.text0289,
-  CONFIG_HOSTING_TYPES,
-  { required: true, valueDetails: CONFIG_HOSTING_TYPE_DETAILS },
+  CONFIG_PACK_TYPES,
+  { required: true, valueDetails: CONFIG_PACK_TYPE_DETAILS },
+);
+
+const PACK_DEFAULT_FIELD = bool(
+  "default",
+  "把该资源包加入默认发送集合；缺键回退 true",
 );
 
 const HOST_ENVIRONMENT_FIELD = bool(
@@ -1232,8 +1523,18 @@ const HOST_CACHE_FIELD = field(
   { aliases: ["cache-file-name"] },
 );
 
-const HOST_FIELDS = new Map<string, readonly SchemaField[]>([
+const PACK_TYPE_FIELDS = new Map<string, readonly SchemaField[]>([
   ["none", []],
+  [
+    "self",
+    [
+      field(
+        "storage_path",
+        "self 类型资源包 ZIP 的目标路径；相对路径以插件数据目录为基准, 缺键回退 ./cache/hosted/<资源包 ID>/resource_pack.zip",
+        { aliases: ["storage-path"] },
+      ),
+    ],
+  ],
   [
     "external",
     [
@@ -1243,47 +1544,8 @@ const HOST_FIELDS = new Map<string, readonly SchemaField[]>([
     ],
   ],
   [
-    "self",
-    [
-      requiredString("ip", Messages.src.config.schema.configFile.text0295),
-      enumField("port", Messages.src.config.schema.configFile.text0296, [
-        "auto",
-      ]),
-      field("url", Messages.src.config.schema.configFile.text0297),
-      field("protocol", Messages.src.config.schema.configFile.text0298, {
-        values: ["http", "https"],
-      }),
-      bool(
-        "deny_non_minecraft_request",
-        Messages.src.config.schema.configFile.text0299,
-        ["deny-non-minecraft-request"],
-      ),
-      bool("one_time_token", Messages.src.config.schema.configFile.text0300, [
-        "one-time-token",
-      ]),
-      bool(
-        "strict_validation",
-        Messages.src.config.schema.configFile.text0301,
-        ["strict-validation"],
-      ),
-      mapping("rate_limiting", Messages.src.config.schema.configFile.text0302, {
-        aliases: ["rate-limiting"],
-      }),
-      number(
-        "max_bandwidth_per_second",
-        Messages.src.config.schema.configFile.text0303,
-        {
-          aliases: ["max-bandwidth-per-second"],
-        },
-      ),
-      number(
-        "min_download_speed_per_player",
-        Messages.src.config.schema.configFile.text0304,
-        {
-          aliases: ["min-download-speed-per-player"],
-        },
-      ),
-    ],
+    "mcpacks",
+    [HOST_CACHE_FIELD],
   ],
   [
     "lobfile",
@@ -1498,27 +1760,18 @@ const HOST_FIELDS = new Map<string, readonly SchemaField[]>([
       ),
     ],
   ],
+  [
+    "self_forward",
+    [
+      requiredString("server", "转发目标 CraftEngine 服务器地址"),
+      requiredString(
+        "secret",
+        "转发请求使用的共享密钥；必须与目标端 self-host.forward_secret 一致",
+      ),
+      requiredString("pack", "在目标服务器上使用的资源包 ID"),
+    ],
+  ],
 ]);
-
-const SELF_RATE_LIMIT_FIELDS: readonly SchemaField[] = [
-  field("qps_per_ip", Messages.src.config.schema.configFile.text0347, {
-    aliases: ["qps-per-ip"],
-  }),
-  number(
-    "max_bandwidth_per_second",
-    Messages.src.config.schema.configFile.text0348,
-    {
-      aliases: ["max-bandwidth-per-second"],
-    },
-  ),
-  number(
-    "min_download_speed_per_player",
-    Messages.src.config.schema.configFile.text0349,
-    {
-      aliases: ["min-download-speed-per-player"],
-    },
-  ),
-];
 
 const S3_CDN_FIELDS: readonly SchemaField[] = [
   requiredString("domain", Messages.src.config.schema.configFile.text0350),
@@ -1676,6 +1929,58 @@ const DUPLICATED_HANDLER_ITEM_FIELDS: readonly SchemaField[] = [
   requiredMapping("resolution", Messages.src.config.schema.configFile.text0379),
 ];
 
+const DAMAGE_INDICATOR_SCHEME_FIELDS: readonly SchemaField[] = [
+  enumField("type", "伤害数字显示方案类型", ["text"], { required: true }),
+  field("text", "伤害数字 MiniMessage 文本", { required: true }),
+  mapping("position", "伤害数字生成位置的随机散布"),
+  mapping("animation", "伤害数字缩放和移除动画"),
+  list("condition", "显示方案生效条件", { aliases: ["conditions"] }),
+];
+
+function damageIndicatorSchemeFields(
+  path: readonly string[],
+): readonly SchemaField[] | undefined {
+  if (!pathStartsWith(path, ["damage_indicator", "schemes"]))
+    return undefined;
+  const relative = path
+    .slice(2)
+    .filter((segment) => !isListIndex(segment));
+  if (relative.length === 0) return DAMAGE_INDICATOR_SCHEME_FIELDS;
+  switch (relative.join(".")) {
+    case "position":
+      return [
+        number("angle_spread", "水平方向随机散布角度", {
+          aliases: ["angle-spread"],
+        }),
+        number("height_spread", "相对实体高度的垂直随机散布", {
+          aliases: ["height-spread"],
+        }),
+      ];
+    case "animation":
+      return [
+        number("spawn_scale", "生成时缩放", { aliases: ["spawn-scale"] }),
+        number("pop_scale", "弹出阶段缩放", { aliases: ["pop-scale"] }),
+        number("settle_scale", "稳定阶段缩放", {
+          aliases: ["settle-scale"],
+        }),
+        number("pop_delay", "弹出阶段延迟 tick", {
+          aliases: ["pop-delay"],
+        }),
+        number("settle_delay", "稳定阶段延迟 tick", {
+          aliases: ["settle-delay"],
+        }),
+        number("shrink_delay", "缩小阶段延迟 tick", {
+          aliases: ["shrink-delay"],
+        }),
+        number("remove_delay", "移除延迟 tick", {
+          aliases: ["remove-delay"],
+        }),
+      ];
+    default:
+      return [];
+  }
+}
+
 function siblingValue(
   context: SchemaContext,
   key: string,
@@ -1781,28 +2086,31 @@ export function configFileFieldsForContext(
       : context.path,
   );
 
-  if (pathStartsWith(path, ["resource_pack", "delivery", "hosting"])) {
-    const relativeWithIndex = path.slice(3);
-    const relative = isListIndex(relativeWithIndex[0])
-      ? relativeWithIndex.slice(1)
-      : relativeWithIndex;
-    if (relative.length === 0) {
+  const indicatorFields = damageIndicatorSchemeFields(path);
+  if (indicatorFields !== undefined) return indicatorFields;
+
+  if (pathStartsWith(path, ["resource_pack", "workflows"]) && path.length > 2) {
+    const relative = path.slice(2);
+    if (relative.length === 1) return WORKFLOW_FIELDS;
+    if (relative[1] === "steps")
+      return relative.length <= 3 ? WORKFLOW_STEP_FIELDS : [];
+    return [];
+  }
+
+  if (pathStartsWith(path, ["resource_pack", "packs"]) && path.length > 2) {
+    const relative = path.slice(2);
+    if (relative.length === 1) {
       const rawType = siblingValue(context, "type");
-  // alist 必须保持原样, 加上命名空间后也不能放宽检查
-      const type =
-        rawType === "craftengine:alist"
-          ? "openlist"
-          : rawType?.startsWith("craftengine:")
-            ? rawType.slice("craftengine:".length)
-            : rawType;
+      const type = rawType?.startsWith("craftengine:")
+        ? rawType.slice("craftengine:".length)
+        : rawType;
       return [
-        HOST_TYPE_FIELD,
-        ...(type === undefined ? [] : (HOST_FIELDS.get(type) ?? [])),
+        PACK_TYPE_FIELD,
+        PACK_DEFAULT_FIELD,
+        ...(type === undefined ? [] : (PACK_TYPE_FIELDS.get(type) ?? [])),
       ];
     }
-    switch (relative.join(".")) {
-      case "rate_limiting":
-        return SELF_RATE_LIMIT_FIELDS;
+    switch (relative.slice(1).join(".")) {
       case "cdn":
         return S3_CDN_FIELDS;
       case "timeout":

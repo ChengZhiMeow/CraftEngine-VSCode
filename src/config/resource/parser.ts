@@ -1,7 +1,6 @@
 import type { CoreIssue } from "../../diagnostics/model.js";
 import { groupBy } from "../../util/collections.js";
 import {
-  isValidIdentifier,
   makeIdentifier,
   splitIdentifier,
 } from "../../util/identifiers.js";
@@ -26,6 +25,11 @@ export const GENERIC_RESOURCE_KINDS: readonly GenericResourceKind[] = [
   "configured-feature",
   "placed-feature",
   "advancement",
+  "entity",
+  "attribute",
+  "attribute-operation",
+  "equipment-set",
+  "atlas",
 ];
 
 const KIND_LABELS: Readonly<Record<GenericResourceKind, string>> = {
@@ -36,6 +40,11 @@ const KIND_LABELS: Readonly<Record<GenericResourceKind, string>> = {
   "configured-feature": Messages.src.references.crossDomain.text0016,
   "placed-feature": Messages.src.references.crossDomain.text0017,
   advancement: Messages.src.config.resource.parser.text0005,
+  entity: "实体",
+  attribute: "自定义属性",
+  "attribute-operation": "属性运算",
+  "equipment-set": "装备套装",
+  atlas: "Atlas",
 };
 
 export interface GenericResourceBuildResult {
@@ -95,20 +104,6 @@ export function buildGenericResourceIndex(
     }
 
     const id = makeIdentifier(candidate.rawId, candidate.source.pack.namespace);
-    if (!isValidIdentifier(id)) {
-      issues.push(
-        issue(
-          candidate.source,
-          `invalid-${candidate.kind}-id`,
-          Messages.src.config.resource.parser.text0007(
-            KIND_LABELS[candidate.kind],
-            id,
-          ),
-          "error",
-        ),
-      );
-      return [];
-    }
 
     if (candidate.kind === "advancement") {
       const ignoredField = Object.keys(candidate.value).find(

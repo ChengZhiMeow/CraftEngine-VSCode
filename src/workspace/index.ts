@@ -1,7 +1,6 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import { PNG } from "pngjs";
 import * as vscode from "vscode";
 
 import { Messages } from "../messages.js";
@@ -67,8 +66,17 @@ import {
   materializeStandaloneTranslationFile,
   standaloneTranslationPack,
 } from "../config/text/standaloneTranslations.js";
-import type { WorkspaceIndex } from "./model.js";
+import type { WorkspaceIndex, WorkspaceDocumentIndex } from "./model.js";
+import { EMPTY_DOCUMENT_INDEX } from "./model.js";
 import { canonicalPath, isPathInside } from "../util/paths.js";
+import { CURRENT_CONFIG_VERSION } from "../config/registry/legacyKeys.js";
+import type { TextRange } from "../diagnostics/model.js";
+import {
+  scanBlueprintFiles,
+  scanScriptFiles,
+  type BlueprintReference,
+  type ScriptReference,
+} from "../references/blueprintScript.js";
 import { publishWorkspaceDiagnostics } from "./diagnosticsPublisher.js";
 import { RebuildCoordinator } from "./rebuildCoordinator.js";
 import {
@@ -89,6 +97,51 @@ interface PngCacheEntry {
   readonly height: number;
 }
 
+const WATCHED_GLOB = "**/*.{yml,yaml,png,json,mcmeta,ogg,js,bbmodel}";
+
+type WatchEventKind = "create" | "change" | "delete";
+
+function referenceAtOffset<T extends { readonly range: TextRange }>(
+  references: readonly T[],
+  offset: number,
+): T | undefined {
+  return references.find(
+    (reference) =>
+      offset >= reference.range.start && offset <= reference.range.end,
+  );
+}
+
+  // 与 config/validation/standalone.ts 的 versionScalarText 同语义: 字符串原样取值,
+  // 数字只认 `114` 这类规范十进制标量文本
+function declaredConfigVersion(parsed: ParsedYamlFile): number | undefined {
+  for (const section of parsed.sections) {
+    if (section.key !== "___version___" && section.key !== "config-version")
+      continue;
+    const value = section.value;
+    const text =
+      typeof value === "string"
+        ? value
+        : typeof value === "number"
+          ? parsed.text.slice(section.valueRange.start, section.valueRange.end)
+          : undefined;
+    if (text === undefined || !/^(?:0|[1-9]\d*)$/u.test(text)) return undefined;
+    return Number(text);
+  }
+  return undefined;
+}
+
+  // 资源段文件没有版本标记, 用工作区 config.yml 声明的版本; 读不到时按当前版本处理
+function workspaceConfigVersion(
+  files: readonly ParsedWorkspaceStandaloneFile[],
+): number {
+  for (const file of files) {
+    if (path.basename(file.path) !== "config.yml") continue;
+    const version = declaredConfigVersion(file.rawParsed);
+    if (version !== undefined) return version;
+  }
+  return CURRENT_CONFIG_VERSION;
+}
+
 export class CraftEngineWorkspaceIndex implements vscode.Disposable {
   private current: WorkspaceIndex = emptyWorkspaceSnapshot();
   private discovered: DiscoveredWorkspace = {
@@ -105,9 +158,39 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
   private generation = 0;
   private resourceFilesDirty = true;
   private resourceFilesSignature = "";
+  private scriptFilesDirty = true;
+  private scriptFilesSignature = "";
+  private blueprintFilesDirty = true;
+  private blueprintFilesSignature = "";
   private currentGlobalVariables: GlobalVariableCatalog | undefined;
+  // 工作区 config.yml 声明的版本, 资源段文件没有版本标记时按它放宽旧键
+  private configVersion: number = CURRENT_CONFIG_VERSION;
+  private previewGeneration = -1;
+  private previewsByUri:
+    | ReadonlyMap<string, readonly BlockStatePreview[]>
+    | undefined;
+  private identifierGeneration = -1;
+  private readonly identifierCache = new Map<string, readonly string[]>();
 
   public readonly onDidChange = this.emitter.event;
+
+    // 文件系统事件与两个根监听器共用的一份脏标记
+  private readonly watched = (
+    uri: vscode.Uri,
+    kind: WatchEventKind,
+  ): void => {
+    const isBlueprint = /\.bbmodel$/iu.test(uri.path);
+    const isScript = /\.js$/iu.test(uri.path);
+    // 脚本与蓝图目录快照只保存路径集合, 内容变更不影响任何索引数据
+    if (kind === "change" && (isBlueprint || isScript)) return;
+    if (uri.path.toLowerCase().endsWith(".png"))
+      this.pngCache.delete(canonicalPath(uri.fsPath));
+    if (/\.(?:png|json|mcmeta|ogg)$/iu.test(uri.path))
+      this.resourceFilesDirty = true;
+    if (isBlueprint) this.blueprintFilesDirty = true;
+    if (isScript) this.scriptFilesDirty = true;
+    this.scheduleRebuild();
+  };
 
   public constructor(
     private readonly diagnostics: vscode.DiagnosticCollection,
@@ -119,21 +202,12 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
       () => this.build(),
       (error) => console.error(Messages.src.workspace.index.text0001, error),
     );
-    const watcher = vscode.workspace.createFileSystemWatcher(
-      "**/*.{yml,yaml,png,json,mcmeta,ogg}",
-    );
-    const changed = (uri: vscode.Uri): void => {
-      if (uri.path.toLowerCase().endsWith(".png"))
-        this.pngCache.delete(canonicalPath(uri.fsPath));
-      if (/\.(?:png|json|mcmeta|ogg)$/iu.test(uri.path))
-        this.resourceFilesDirty = true;
-      this.scheduleRebuild();
-    };
+    const watcher = vscode.workspace.createFileSystemWatcher(WATCHED_GLOB);
     this.disposables.push(
       watcher,
-      watcher.onDidCreate(changed),
-      watcher.onDidChange(changed),
-      watcher.onDidDelete(changed),
+      watcher.onDidCreate((uri) => this.watched(uri, "create")),
+      watcher.onDidChange((uri) => this.watched(uri, "change")),
+      watcher.onDidDelete((uri) => this.watched(uri, "delete")),
       vscode.workspace.onDidChangeTextDocument((event) => {
         if (event.document.languageId === "json")
           this.resourceFilesDirty = true;
@@ -240,6 +314,10 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
       this.pngCache.clear();
       this.resourceFilesDirty = true;
       this.resourceFilesSignature = "";
+      this.scriptFilesDirty = true;
+      this.scriptFilesSignature = "";
+      this.blueprintFilesDirty = true;
+      this.blueprintFilesSignature = "";
       this.discovered = {
         resourceRoots: [],
         packs: [],
@@ -324,6 +402,8 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
       configurationRoot: path.dirname(filePath),
       resourcePackRoot: baseResourcePackRoot,
       baseResourcePackRoot,
+      blueprintRoot: path.join(folder, "blueprint"),
+      scriptRoot: path.join(folder, "script"),
       loadOrder: Number.MAX_SAFE_INTEGER,
     };
   }
@@ -356,6 +436,9 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
     return parsed;
   }
 
+  // 只读 PNG 头的 IHDR 宽高, 不做完整解码: Minecraft 自己读 PNG 不校验 CRC,
+  // CraftEngine 26.7/26.8 默认资源包里就有 IEND CRC 为 0 的 PNG,
+  // 用严格解码器会把这些贴图判成不存在并误报 missing-texture。
   private async pngDimensions(
     filePath: string,
   ): Promise<{ width: number; height: number } | undefined> {
@@ -369,12 +452,25 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
         cached.size === stat.size
       )
         return cached;
-      const png = PNG.sync.read(await fs.readFile(filePath));
+      const header = Buffer.alloc(24);
+      const handle = await fs.open(filePath, "r");
+      try {
+        const { bytesRead } = await handle.read(header, 0, 24, 0);
+        if (bytesRead < 24) return undefined;
+      } finally {
+        await handle.close();
+      }
+      // PNG 签名 + IHDR 块名
+      if (
+        header.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a" ||
+        header.subarray(12, 16).toString("latin1") !== "IHDR"
+      )
+        return undefined;
       const entry = {
         modified: stat.mtimeMs,
         size: stat.size,
-        width: png.width,
-        height: png.height,
+        width: header.readUInt32BE(16),
+        height: header.readUInt32BE(20),
       };
       this.pngCache.set(key, entry);
       return entry;
@@ -436,21 +532,23 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
       const key = canonicalPath(resourceRoot);
       if (this.rootWatchers.has(key)) continue;
       const watcher = vscode.workspace.createFileSystemWatcher(
-        new vscode.RelativePattern(
-          resourceRoot,
-          "**/*.{yml,yaml,png,json,mcmeta,ogg}",
-        ),
+        new vscode.RelativePattern(resourceRoot, WATCHED_GLOB),
       );
-      const changed = (uri: vscode.Uri): void => {
-        if (uri.path.toLowerCase().endsWith(".png"))
-          this.pngCache.delete(canonicalPath(uri.fsPath));
-        if (/\.(?:png|json|mcmeta|ogg)$/iu.test(uri.path))
-          this.resourceFilesDirty = true;
-        this.scheduleRebuild();
-      };
-      watcher.onDidCreate(changed, undefined, this.disposables);
-      watcher.onDidChange(changed, undefined, this.disposables);
-      watcher.onDidDelete(changed, undefined, this.disposables);
+      watcher.onDidCreate(
+        (uri) => this.watched(uri, "create"),
+        undefined,
+        this.disposables,
+      );
+      watcher.onDidChange(
+        (uri) => this.watched(uri, "change"),
+        undefined,
+        this.disposables,
+      );
+      watcher.onDidDelete(
+        (uri) => this.watched(uri, "delete"),
+        undefined,
+        this.disposables,
+      );
       this.rootWatchers.set(key, watcher);
     }
   }
@@ -560,6 +658,7 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
     );
     this.installRootWatchers();
     const standaloneFiles = await this.standaloneFiles(overlay);
+    this.configVersion = workspaceConfigVersion(standaloneFiles);
     const files = new Map<string, { path: string; pack: PackSource }>();
     for (const config of this.discovered.configurationFiles)
       files.set(canonicalPath(config.path), config);
@@ -608,20 +707,59 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
         ].join(":"),
       )
       .join("|");
+    // 读标记与清标记必须排在 await 之前: 否则扫描期间到达的事件会被扫描结束后的清零吞掉
+    const resourceFilesDirty = this.resourceFilesDirty;
+    this.resourceFilesDirty = false;
     const resources =
-      this.resourceFilesDirty ||
-      resourceSignature !== this.resourceFilesSignature
+      resourceFilesDirty || resourceSignature !== this.resourceFilesSignature
         ? await scanResourceFiles(this.discovered.packs, resourceOverlay)
         : this.current.resources;
-    this.resourceFilesDirty = false;
     this.resourceFilesSignature = resourceSignature;
+    const scriptSignature = this.discovered.packs
+      .map((pack) =>
+        [
+          canonicalPath(pack.scriptRoot ?? pack.folder),
+          pack.namespace,
+          pack.active,
+          pack.loadOrder,
+        ].join(":"),
+      )
+      .join("|");
+    // 同资源扫描: 读-清必须排在 await 之前
+    const scriptFilesDirty = this.scriptFilesDirty;
+    this.scriptFilesDirty = false;
+    const scripts =
+      scriptFilesDirty || scriptSignature !== this.scriptFilesSignature
+        ? await scanScriptFiles(this.discovered.packs)
+        : this.current.scripts;
+    this.scriptFilesSignature = scriptSignature;
+    const blueprintSignature = this.discovered.packs
+      .map((pack) =>
+        [
+          canonicalPath(pack.blueprintRoot ?? pack.folder),
+          pack.loadOrder,
+        ].join(":"),
+      )
+      .join("|");
+    // 同资源扫描: 读-清必须排在 await 之前
+    const blueprintFilesDirty = this.blueprintFilesDirty;
+    this.blueprintFilesDirty = false;
+    const blueprints =
+      blueprintFilesDirty || blueprintSignature !== this.blueprintFilesSignature
+        ? await scanBlueprintFiles(this.discovered.packs)
+        : this.current.blueprints;
+    this.blueprintFilesSignature = blueprintSignature;
     const { index: next, globalVariables } = await buildWorkspaceSnapshot({
       packed,
       standaloneFiles,
       parsedFiles,
       resources,
+      packs: this.discovered.packs,
+      scripts,
+      blueprints,
       resourceRoots: this.discovered.resourceRoots,
       generation: ++this.generation,
+      configVersion: this.configVersion,
       includeInactiveDiagnostics,
       unknownExtensionSyntax: configuration.get<"ignore" | "warning">(
         "diagnostics.unknownExtensionSyntax",
@@ -641,30 +779,37 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
     return next;
   }
 
-  public definitionsInDocument(
+  private documentDefinitions(
     document: vscode.TextDocument,
-  ): ImageDefinition[] {
-    const uri = document.uri.toString();
-    return this.current.images.filter((image) => image.source.uri === uri);
+  ): WorkspaceDocumentIndex {
+    return (
+      this.current.documents.get(document.uri.toString()) ??
+      EMPTY_DOCUMENT_INDEX
+    );
   }
 
-  public itemsInDocument(document: vscode.TextDocument): ItemDefinition[] {
-    const uri = document.uri.toString();
-    return this.current.items.filter((item) => item.source.uri === uri);
+  public definitionsInDocument(
+    document: vscode.TextDocument,
+  ): readonly ImageDefinition[] {
+    return this.documentDefinitions(document).images;
+  }
+
+  public itemsInDocument(
+    document: vscode.TextDocument,
+  ): readonly ItemDefinition[] {
+    return this.documentDefinitions(document).items;
   }
 
   public blocksInDocument(
     document: vscode.TextDocument,
   ): readonly WorkspaceIndex["blocks"][number][] {
-    const uri = document.uri.toString();
-    return this.current.blocks.filter((block) => block.source.uri === uri);
+    return this.documentDefinitions(document).blocks;
   }
 
   public furnitureInDocument(
     document: vscode.TextDocument,
   ): readonly WorkspaceIndex["furniture"][number][] {
-    const uri = document.uri.toString();
-    return this.current.furniture.filter((entry) => entry.source.uri === uri);
+    return this.documentDefinitions(document).furniture;
   }
 
   public lootTables(
@@ -672,18 +817,18 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
   ): readonly WorkspaceIndex["lootTables"][number][] {
     if (!document) return this.current.lootTables;
     const root = this.rootForDocument(document);
+    const canonicalRoot = root === undefined ? undefined : canonicalPath(root);
     return this.current.lootTables.filter(
       (loot) =>
-        root === undefined ||
-        canonicalPath(loot.source.pack.resourcesRoot) === canonicalPath(root),
+        canonicalRoot === undefined ||
+        canonicalPath(loot.source.pack.resourcesRoot) === canonicalRoot,
     );
   }
 
   public lootTablesInDocument(
     document: vscode.TextDocument,
   ): readonly WorkspaceIndex["lootTables"][number][] {
-    const uri = document.uri.toString();
-    return this.current.lootTables.filter((loot) => loot.source.uri === uri);
+    return this.documentDefinitions(document).lootTables;
   }
 
   public genericResources(
@@ -698,10 +843,11 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
           );
     if (!document) return entries;
     const root = this.rootForDocument(document);
+    const canonicalRoot = root === undefined ? undefined : canonicalPath(root);
     return entries.filter(
       (entry) =>
-        root === undefined ||
-        canonicalPath(entry.source.pack.resourcesRoot) === canonicalPath(root),
+        canonicalRoot === undefined ||
+        canonicalPath(entry.source.pack.resourcesRoot) === canonicalRoot,
     );
   }
 
@@ -709,10 +855,10 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
     document: vscode.TextDocument,
     kind?: GenericResourceKind,
   ): readonly GenericResourceDefinition[] {
-    const uri = document.uri.toString();
-    return this.genericResources(kind).filter(
-      (entry) => entry.source.uri === uri,
-    );
+    const entries = this.documentDefinitions(document).genericResources;
+    return kind === undefined
+      ? entries
+      : entries.filter((entry) => entry.kind === kind);
   }
 
   public genericResourceAt(
@@ -738,10 +884,36 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
   public crossDomainReferencesInDocument(
     document: vscode.TextDocument,
   ): readonly WorkspaceIndex["crossDomainReferences"][number][] {
-    const uri = document.uri.toString();
-    return this.current.crossDomainReferences.filter(
-      (reference) => reference.uri === uri,
+    return this.documentDefinitions(document).crossDomainReferences;
+  }
+
+  public blueprintReferencesInDocument(
+    document: vscode.TextDocument,
+  ): readonly BlueprintReference[] {
+    return this.documentDefinitions(document).blueprintReferences;
+  }
+
+  public scriptReferencesInDocument(
+    document: vscode.TextDocument,
+  ): readonly ScriptReference[] {
+    return this.documentDefinitions(document).scriptReferences;
+  }
+
+  public blueprintReferenceAt(
+    document: vscode.TextDocument,
+    offset: number,
+  ): BlueprintReference | undefined {
+    return referenceAtOffset(
+      this.blueprintReferencesInDocument(document),
+      offset,
     );
+  }
+
+  public scriptReferenceAt(
+    document: vscode.TextDocument,
+    offset: number,
+  ): ScriptReference | undefined {
+    return referenceAtOffset(this.scriptReferencesInDocument(document), offset);
   }
 
   public crossDomainReferenceAt(
@@ -767,38 +939,58 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
   ): readonly WorkspaceIndex["soundEvents"][number][] {
     if (!document) return this.current.soundEvents;
     const root = this.rootForDocument(document);
+    const canonicalRoot = root === undefined ? undefined : canonicalPath(root);
     return this.current.soundEvents.filter(
       (event) =>
-        root === undefined ||
-        canonicalPath(event.source.pack.resourcesRoot) === canonicalPath(root),
+        canonicalRoot === undefined ||
+        canonicalPath(event.source.pack.resourcesRoot) === canonicalRoot,
     );
   }
 
   public soundEventsInDocument(
     document: vscode.TextDocument,
   ): readonly WorkspaceIndex["soundEvents"][number][] {
-    const uri = document.uri.toString();
-    return this.current.soundEvents.filter(
-      (event) => event.source.uri === uri,
-    );
+    return this.documentDefinitions(document).soundEvents;
   }
 
   public soundDataInDocument(
     document: vscode.TextDocument,
   ): readonly WorkspaceIndex["soundDataReferences"][number][] {
-    const uri = document.uri.toString();
-    return this.current.soundDataReferences.filter(
-      (reference) => reference.source.uri === uri,
-    );
+    return this.documentDefinitions(document).soundDataReferences;
   }
 
   public blockPreviewsInDocument(
     document: vscode.TextDocument,
   ): readonly BlockStatePreview[] {
-    const uri = document.uri.toString();
-    return blockStatePreviews(this.current.blocks, this.current.items).filter(
-      (preview) => preview.source.uri === uri,
-    );
+    return this.previewsBySourceUri().get(document.uri.toString()) ?? [];
+  }
+
+  // 预览只依赖不可变快照, 按代际缓存"按 uri 分桶"的结果, 请求内只查表
+  private previewsBySourceUri(): ReadonlyMap<
+    string,
+    readonly BlockStatePreview[]
+  > {
+    const generation = this.current.generation;
+    if (
+      generation > 0 &&
+      generation === this.previewGeneration &&
+      this.previewsByUri
+    )
+      return this.previewsByUri;
+    const byUri = new Map<string, BlockStatePreview[]>();
+    for (const preview of blockStatePreviews(
+      this.current.blocks,
+      this.current.items,
+    )) {
+      const bucket = byUri.get(preview.source.uri);
+      if (bucket) bucket.push(preview);
+      else byUri.set(preview.source.uri, [preview]);
+    }
+    if (generation > 0) {
+      this.previewGeneration = generation;
+      this.previewsByUri = byUri;
+    }
+    return byUri;
   }
 
   public blockPreviewsAt(
@@ -812,11 +1004,8 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
 
   public equipmentsInDocument(
     document: vscode.TextDocument,
-  ): EquipmentDefinition[] {
-    const uri = document.uri.toString();
-    return this.current.equipments.filter(
-      (equipment) => equipment.source.uri === uri,
-    );
+  ): readonly EquipmentDefinition[] {
+    return this.documentDefinitions(document).equipments;
   }
 
   public jukeboxSongs(
@@ -824,10 +1013,11 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
   ): readonly JukeboxSongDefinition[] {
     if (!document) return this.current.jukeboxSongs;
     const root = this.rootForDocument(document);
+    const canonicalRoot = root === undefined ? undefined : canonicalPath(root);
     return this.current.jukeboxSongs.filter(
       (song) =>
-        root === undefined ||
-        canonicalPath(song.source.pack.resourcesRoot) === canonicalPath(root),
+        canonicalRoot === undefined ||
+        canonicalPath(song.source.pack.resourcesRoot) === canonicalRoot,
     );
   }
 
@@ -896,10 +1086,11 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
       kind === "block" ? this.current.blocks : this.current.furniture;
     if (!document) return entries;
     const root = this.rootForDocument(document);
+    const canonicalRoot = root === undefined ? undefined : canonicalPath(root);
     return entries.filter(
       (entry) =>
-        root === undefined ||
-        canonicalPath(entry.source.pack.resourcesRoot) === canonicalPath(root),
+        canonicalRoot === undefined ||
+        canonicalPath(entry.source.pack.resourcesRoot) === canonicalRoot,
     );
   }
 
@@ -930,9 +1121,8 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
       this.furnitureInDocument(document)[0]?.source.pack.resourcesRoot ??
       this.soundEventsInDocument(document)[0]?.source.pack.resourcesRoot ??
       this.equipmentsInDocument(document)[0]?.source.pack.resourcesRoot ??
-      this.current.jukeboxSongs.find(
-        (song) => song.source.uri === document.uri.toString(),
-      )?.source.pack.resourcesRoot ??
+      this.documentDefinitions(document).jukeboxSongs[0]?.source.pack
+        .resourcesRoot ??
       this.genericResourcesInDocument(document)[0]?.source.pack.resourcesRoot ??
       (document.uri.scheme === "file"
         ? this.standaloneDescriptor(document.uri.fsPath)?.resourcesRoot
@@ -975,7 +1165,25 @@ export class CraftEngineWorkspaceIndex implements vscode.Disposable {
   ): string[] {
     const root = this.rootForDocument(document);
     if (!root) return [];
-    return [...resourceIdentifiers(this.current.resources, root, kind)];
+    return [...this.cachedResourceIdentifiers(kind, root)];
+  }
+
+  // 同一代快照里同一 resourcesRoot 的同种资源 id 结果不变, 按代际记忆化
+  private cachedResourceIdentifiers(
+    kind: ResourceFileKind,
+    root: string,
+  ): readonly string[] {
+    const generation = this.current.generation;
+    if (generation !== this.identifierGeneration) {
+      this.identifierGeneration = generation;
+      this.identifierCache.clear();
+    }
+    const key = `${canonicalPath(root)}\u0000${kind}`;
+    const cached = this.identifierCache.get(key);
+    if (cached) return cached;
+    const identifiers = resourceIdentifiers(this.current.resources, root, kind);
+    if (generation > 0) this.identifierCache.set(key, identifiers);
+    return identifiers;
   }
 
   public resourceFiles(

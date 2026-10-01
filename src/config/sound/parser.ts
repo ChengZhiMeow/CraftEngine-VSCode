@@ -20,12 +20,12 @@ import type {
 } from "../../resources/model.js";
 import { groupBy } from "../../util/collections.js";
 import {
-  isValidIdentifier,
   makeIdentifier,
   splitIdentifier,
 } from "../../util/identifiers.js";
 import { canonicalPath } from "../../util/paths.js";
 import { isRecord, isUnknownArray } from "../../util/records.js";
+import { evaluateExpression } from "../expression/evaluator.js";
 import type {
   ConfigurationCandidateInput,
   ConfigurationSource,
@@ -85,8 +85,45 @@ function normalizeEventOrFileId(value: string): string {
   return makeIdentifier(value.replace(/\.ogg$/iu, ""), "minecraft");
 }
 
-function finiteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
+  // CE 的 getAsInt: 字符串可以先删下划线再解析, 失败后按表达式求值, 没有下限
+function configInt(value: unknown): number | undefined {
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number")
+    return Number.isFinite(value) ? Math.trunc(value) : undefined;
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  const literal = Number(value.trim().replaceAll("_", ""));
+  if (!Number.isNaN(literal)) return Math.trunc(literal);
+  try {
+    const evaluated = evaluateExpression(value);
+    return typeof evaluated === "number" && Number.isFinite(evaluated)
+      ? Math.trunc(evaluated)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Java 的 Float.parseFloat 认这些写法, 也允许 f/F/d/D 后缀与 Infinity/NaN
+const JAVA_FLOAT_LITERAL =
+  /^[+-]?(?:Infinity|NaN|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[fFdD]?)$/u;
+
+// CE 的 getFloat: 数字直接转 float, 字符串先删下划线再按 Java 浮点写法读,
+// 失败后按 CraftEngine 表达式求值(ConfigValue.java:159-179)
+function configFloat(value: unknown): number | undefined {
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number") return value;
+  if (typeof value !== "string" || value.trim() === "") return undefined;
+  const normalized = value.trim().replaceAll("_", "");
+  if (JAVA_FLOAT_LITERAL.test(normalized))
+    return Number(
+      /[fFdD]$/u.test(normalized) ? normalized.slice(0, -1) : normalized,
+    );
+  try {
+    const evaluated = evaluateExpression(value);
+    return typeof evaluated === "number" ? evaluated : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function validateNumberProvider(
@@ -216,34 +253,32 @@ function parseEntry(
       ),
     );
   }
-  if (raw.volume !== undefined)
-    validateNumberProvider(
-      raw.volume,
-      source,
-      `${pathName}.volume`,
-      Messages.src.config.sound.parser.text0005,
-      issues,
+  for (const key of ["volume", "pitch"] as const) {
+    // CE 的 volume/pitch 走 getFloat(Sound.java:57-58), 只接受数字标量与 CraftEngine 表达式;
+    // a~b 区间是 SoundData 的语义(SoundData.java:47-59), 声音文件写区间会抛 PARSE_FLOAT_FAILED
+    if (raw[key] === undefined || configFloat(raw[key]) !== undefined) continue;
+    issues.push(
+      issue(
+        source,
+        "invalid-sound-scalar",
+        `声音文件 ${pathName}.${key} 必须是数字或 CraftEngine 表达式`,
+        "error",
+        `${pathName}.${key}`,
+      ),
     );
-  if (raw.pitch !== undefined)
-    validateNumberProvider(
-      raw.pitch,
-      source,
-      `${pathName}.pitch`,
-      Messages.src.config.sound.parser.text0006,
-      issues,
-    );
-  const weight = raw.weight === undefined ? 1 : raw.weight;
-  if (!finiteNumber(weight) || !Number.isInteger(weight) || weight <= 0) {
+  }
+  // CE 的 weight 走 getInt, 字符串数字与表达式都合法, 也没有正数限制
+  const weight = raw.weight === undefined ? 1 : configInt(raw.weight);
+  if (raw.weight !== undefined && weight === undefined)
     issues.push(
       issue(
         source,
         "invalid-sound-weight",
-        Messages.src.config.sound.parser.text0007(pathName),
+        `${pathName}.weight 必须是整数或整数表达式`,
         "error",
         `${pathName}.weight`,
       ),
     );
-  }
   for (const key of ["stream", "preload"] as const)
     if (raw[key] !== undefined && typeof raw[key] !== "boolean") {
       issues.push(
@@ -257,12 +292,14 @@ function parseEntry(
       );
     }
   const attenuation = raw.attenuation_distance ?? raw["attenuation-distance"];
-  if (attenuation !== undefined && !finiteNumber(attenuation)) {
+  const attenuationDistance =
+    attenuation === undefined ? 16 : configInt(attenuation);
+  if (attenuation !== undefined && attenuationDistance === undefined) {
     issues.push(
       issue(
         source,
         "invalid-sound-attenuation",
-        Messages.src.config.sound.parser.text0009(pathName),
+        `${pathName}.attenuation_distance 必须是整数或整数表达式`,
         "error",
         `${pathName}.${Object.hasOwn(raw, "attenuation_distance") ? "attenuation_distance" : "attenuation-distance"}`,
       ),
@@ -273,12 +310,9 @@ function parseEntry(
     type: type === "event" ? "event" : "file",
     volume: raw.volume ?? 1,
     pitch: raw.pitch ?? 1,
-    weight:
-      finiteNumber(weight) && Number.isInteger(weight) && weight > 0
-        ? weight
-        : 1,
+    weight: weight ?? 1,
     stream: raw.stream === true,
-    attenuationDistance: finiteNumber(attenuation) ? attenuation : 16,
+    attenuationDistance: attenuationDistance ?? 16,
     preload: raw.preload === true,
     nameRange: rangeFor(source, `${pathName}.name`),
   };
@@ -292,17 +326,6 @@ function parseEvent(
   issues: CoreIssue[],
 ): SoundEventDefinition | undefined {
   const id = makeIdentifier(rawId, source.pack.namespace);
-  if (!isValidIdentifier(id)) {
-    issues.push(
-      issue(
-        source,
-        "invalid-sound-event-id",
-        Messages.src.config.sound.parser.text0010(id),
-        "error",
-      ),
-    );
-    return undefined;
-  }
   if (!isRecord(rawValue)) {
     issues.push(
       issue(
@@ -316,6 +339,9 @@ function parseEvent(
   }
   for (const key of Object.keys(rawValue)) {
     switch (key) {
+      // CE 的 IdSectionConfigParser 统一处理 enable/debug
+      case "enable":
+      case "debug":
       case "replace":
       case "subtitle":
       case "sounds":

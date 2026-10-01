@@ -2,6 +2,10 @@ import * as vscode from "vscode";
 
 import type { TextRange } from "../diagnostics/model.js";
 import type { VanillaAssetStore } from "../minecraft/assets/store.js";
+import {
+  blueprintLookup,
+  scriptLookup,
+} from "../references/blueprintScript.js";
 import type { CraftEngineWorkspaceIndex } from "../workspace/index.js";
 import { rangeAt } from "../util/vscode/range.js";
 import {
@@ -95,6 +99,43 @@ export class CraftEngineDefinitionProvider
               new vscode.Position(0, 0),
             ),
         );
+    }
+    const referenceOffset = document.offsetAt(position);
+    const blueprintReference = this.workspaceIndex.blueprintReferenceAt(
+      document,
+      referenceOffset,
+    );
+    if (blueprintReference) {
+      const lookup = blueprintLookup(
+        this.workspaceIndex.index.blueprints,
+        blueprintReference,
+      );
+      return lookup?.exists
+        ? [
+            new vscode.Location(
+              vscode.Uri.file(lookup.file),
+              new vscode.Position(0, 0),
+            ),
+          ]
+        : [];
+    }
+    const scriptReference = this.workspaceIndex.scriptReferenceAt(
+      document,
+      referenceOffset,
+    );
+    if (scriptReference) {
+      const script = scriptLookup(
+        this.workspaceIndex.index.scripts,
+        scriptReference.value,
+      );
+      return script
+        ? [
+            new vscode.Location(
+              vscode.Uri.file(script.path),
+              new vscode.Position(0, 0),
+            ),
+          ]
+        : [];
     }
     const images = resolvedTextures(
       this.workspaceIndex,

@@ -17,11 +17,7 @@ import type { ImageSource } from "../image/model.js";
 import { getSectionFamily } from "../registry/sectionRegistry.js";
 import { craftEngineBoolean } from "../parsing/packMetadata.js";
 import type { CoreIssue, TextRange } from "../../diagnostics/model.js";
-import {
-  isValidIdentifier,
-  makeIdentifier,
-  splitIdentifier,
-} from "../../util/identifiers.js";
+import { makeIdentifier, splitIdentifier } from "../../util/identifiers.js";
 import { isRecord, isUnknownArray } from "../../util/records.js";
 import { parseLooseScalar } from "../parsing/craftEngineYaml.js";
 import { findCraftEngineTemplatePlaceholders } from "./stringParser.js";
@@ -1632,7 +1628,7 @@ function resourceKind(
       return "furniture";
     case "loot":
       return "loot";
-    case "vanilla-loots":
+    case "loot-sources":
       return "vanilla-loot";
     case "equipments":
       return "equipment";
@@ -1654,6 +1650,16 @@ function resourceKind(
       return "placed-feature";
     case "advancements":
       return "advancement";
+    case "entities":
+      return "entity";
+    case "attributes":
+      return "attribute";
+    case "attribute-operations":
+      return "attribute-operation";
+    case "equipment-sets":
+      return "equipment-set";
+    case "atlases":
+      return "atlas";
     default:
       return undefined;
   }
@@ -1979,6 +1985,11 @@ function addConfigurationMap(
         "configured-feature": Messages.src.config.template.expander.text0039,
         "placed-feature": Messages.src.config.template.expander.text0040,
         advancement: Messages.src.config.template.expander.text0041,
+        entity: "实体",
+        attribute: "自定义属性",
+        "attribute-operation": "属性操作",
+        "equipment-set": "装备套装",
+        atlas: "纹理图集",
       };
       issues.push(
         issueAt(
@@ -2116,15 +2127,6 @@ function collectTemplates(
         const id = makeIdentifier(rawId, file.pack.namespace);
         const entryRange =
           section.ranges.values.get(rawId) ?? section.valueRange;
-        if (!isValidIdentifier(id)) {
-          issues.push({
-            code: "invalid-template-id",
-            message: Messages.src.config.template.expander.text0030(id),
-            severity: "error",
-            uri: file.parsed.uri,
-            range: section.ranges.keys.get(rawId) ?? section.keyRange,
-          });
-        }
         const key = templateKey(file.pack.resourcesRoot, id);
         const scope = templateDefinitionScope(file.pack);
         let templates = scopedTemplates.get(scope);

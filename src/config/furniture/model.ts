@@ -6,6 +6,8 @@ export interface FurnitureSeatDefinition {
   readonly position: FurnitureVector3;
   readonly yaw: number;
   readonly limitedRotation: boolean;
+  // CraftEngine SeatConfig#forcePlayerRotation: NaN 表示不调整玩家视角
+  readonly forcePlayerRotation: number;
   readonly path: string;
 }
 

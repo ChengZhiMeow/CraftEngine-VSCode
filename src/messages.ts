@@ -260,7 +260,6 @@ export const Messages = {
             pushReactionKey: string | number,
             allowed: string | number,
           ) => `settings.${pushReactionKey} 只能是 ${allowed}（不区分大小写）`,
-          text0084: (id: string | number) => `非法方块标识符 ${id}`,
           text0085: "方块根",
           text0086: "方块",
           text0087: "state 与 states 同时存在时只会读取 state",
@@ -402,7 +401,7 @@ export const Messages = {
           text0108: "生成简单方块模型使用的贴图路径（不写 .png 后缀）",
           text0109: "引用模型 JSON, 或配置方块模型对象",
           text0110: "使用展示实体渲染方块外观",
-          text0111: "启用该条目；26.7.4 不建议用它禁用单个方块",
+          text0111: "启用该条目；26.9.2 不建议用它禁用单个方块",
           text0112: "输出模板展开后的方块定义",
           text0113: "单状态方块的视觉状态与模型",
           text0114: "方块硬度、声音、光照、标签和物理设置",
@@ -640,7 +639,7 @@ export const Messages = {
           text0345: "藤蔓作物身体段",
           text0346: "按年龄与光照逐步衰变",
           text0347: "骨粉行为；只有 grow（不区分大小写）选择延伸, 否则结莓",
-          text0348: "延伸方块数 NumberProvider；26.7.4 会求值但丢弃结果",
+          text0348: "延伸方块数 NumberProvider；26.9.2 会求值但丢弃结果",
           text0349: "失去支撑后的延迟 tick",
           text0350: "把支撑列表作为黑名单",
           text0351: "允许同类堆叠",
@@ -782,7 +781,7 @@ export const Messages = {
           text0487: "持久化数据键",
           text0488: "移除时返还染色来源物品",
           text0489: "持久化数据键",
-          text0490: "藤蔓最大高度, 26.7.4 应显式设为至少 2",
+          text0490: "藤蔓最大高度, 26.9.2 应显式设为至少 2",
           text0491: "自然生长速度",
           text0492: "生长方向；up 向上, 其他值向下",
           text0493: "生长后留下的藤蔓身体方块",
@@ -865,7 +864,6 @@ export const Messages = {
             `${pathName} 必须是装备纹理标识符, 不能是映射或列表`,
           text0012: (pathName: string | number) =>
             `${pathName} 必须是合法的装备纹理标识符`,
-          text0013: (id: string | number) => `非法装备标识符 ${id}`,
           text0014: (id: string | number) => `装备 ${id} 缺少 type`,
           text0015: (id: string | number, rawType: string | number) =>
             `装备 ${id} 使用了未知类型 ${rawType}`,
@@ -897,8 +895,6 @@ export const Messages = {
       },
       files: {
         standalone: {
-          text0001:
-            'BoostedYAML 配置版本；CraftEngine 26.7.4 固定为字符串 "84", 不要手动修改',
           text0002: (permission: string, usageCount: number) =>
             `命令功能；默认权限 ${permission}, 共 ${usageCount} 条 usage 路径`,
           text0003:
@@ -916,7 +912,7 @@ export const Messages = {
           text0010: "pack 作者；任意非 null 标量都会调用 toString()",
           text0011:
             "子包选择映射；键为一级 subpacks 目录 ID, 值使用 boolean-like 语义",
-          text0012: "独立 CraftEngine 翻译文件版本；26.7.4 固定为 65",
+          text0012: "独立 CraftEngine 翻译文件版本；26.9.2 固定为 83",
           text0013: (separator: string) =>
             `任意嵌套翻译键；列表元素用 ${separator} 连接, 文件名决定 locale`,
           text0014:
@@ -925,10 +921,6 @@ export const Messages = {
       },
       furniture: {
         parser: {
-          text0001: (pathName: string | number) =>
-            `${pathName}.type 必须是非空 tint source registry ID`,
-          text0002: (registeredSyntax: boolean, type: string | number) =>
-            `${registeredSyntax ? "未知可注册" : "非法"}家具 tint source 类型 ${type}`,
           text0003: (pathName: string | number) =>
             `${pathName} 必须是单个数字或三维向量`,
           text0004: (label: string | number, key: string | number) =>
@@ -938,8 +930,6 @@ export const Messages = {
             present: string | number,
             first: string | number,
           ) => `${label} 同时声明 ${present}；CraftEngine 只读取 ${first}`,
-          text0006: (pathName: string | number) =>
-            `${pathName} 必须使用 "x,y,z" 或 "x,y,z yaw"`,
           text0007: (pathName: string | number) =>
             `${pathName} 必须使用 "x,y,z" 或 "x,y,z yaw"`,
           text0008: (pathName: string | number) =>
@@ -1030,7 +1020,6 @@ export const Messages = {
           text0057: (id: string | number) => `找不到家具元素引用的物品 ${id}`,
           text0058: (id: string | number) =>
             `找不到家具 block_display 引用的方块 ${id}`,
-          text0059: (id: string | number) => `非法家具标识符 ${id}`,
           text0060: (id: string | number) => `家具 ${id} 必须是映射`,
           text0061: "家具根",
           text0062: "家具",
@@ -1070,7 +1059,7 @@ export const Messages = {
         schema: {
           text0001: "启用",
           text0002: "禁用",
-          text0003: "启用该家具；26.7.4 不建议用它禁用单个条目",
+          text0003: "启用该家具；26.9.2 不建议用它禁用单个条目",
           text0004: "输出模板展开后的家具定义",
           text0005: "家具关联物品、声音、击打次数和工具设置",
           text0006: "家具变体；至少需要一个变体",
@@ -1228,9 +1217,6 @@ export const Messages = {
           text0157: "启用视线射线检测",
           text0158: "方块光覆盖, 通常为 -1 或 0..15",
           text0159: "天空光覆盖, 通常为 -1 或 0..15",
-          text0160: "家具染色来源类型",
-          text0161: "默认组件复制染色来源",
-          text0162: "默认组件复制染色来源",
           text0163: "从来源物品复制的数据组件 ID 列表",
           text0164: "展示物品相对家具原点的位置",
           text0165: "该 variant 的专用碰撞箱",
@@ -1244,7 +1230,6 @@ export const Messages = {
           text0173: "光源相对家具原点的位置",
           text0174: "光照等级 1..15",
           text0175: "正确工具物品 ID 或 #物品标签",
-          text0176: "座位格式: x,y,z 或 x,y,z yaw",
           text0177: "要复制的数据组件 ID",
           text0178: "条件类型",
         },
@@ -1253,8 +1238,6 @@ export const Messages = {
         parser: {
           text0001: "chars 必须是等宽且有效的 Unicode 网格",
           text0002: "grid_size 必须是“行,列”格式的正整数",
-          text0003:
-            "CraftEngine 26.7.4 不支持 column；该字段会被忽略, 请改用 col",
           text0004: "ref、row 与 col 必须有效且非负",
           text0005: "图片缺少 file",
           text0006: (file: string | number) => `非法贴图标识符 ${file}`,
@@ -1265,8 +1248,6 @@ export const Messages = {
             "CraftEngine 仅能从声明包的基础 resourcepack 推导 height；请显式填写",
           text0011: "ascent 必须是整数",
           text0012: "height 不得小于 ascent",
-          text0013: (cellWidth: string | number, cellHeight: string | number) =>
-            `字形格 ${cellWidth}×${cellHeight} 超过 256×256`,
           text0014: (
             packName: string | number,
             namespace: string | number,
@@ -1288,14 +1269,13 @@ export const Messages = {
             rows: string | number,
             columns: string | number,
           ) => `ref 格子 (${row},${column}) 超出 ${rows}×${columns}`,
-          text0022: (id: string | number) => `非法图片标识符 ${id}`,
           text0023: (key: string | number) => `未知图片字段 ${key}`,
         },
         schema: {
           text0001: "启用",
           text0002: "禁用",
           text0003:
-            "启用该图片条目；CE 26.7.4 不应使用此字段禁用单项, 否则会提前终止整个 image 加载批次",
+            "启用该图片条目；CE 26.9.2 不应使用此字段禁用单项, 否则会提前终止整个 image 加载批次",
           text0004: "输出模板展开后的图片映射, 随后正常解析",
           text0005: "引用已注册 bitmap 图片；可写 namespace:id[:row[:col]]",
           text0006: "ref 未内嵌坐标时使用的行索引, 默认 0, 有效值不小于 0",
@@ -1973,7 +1953,6 @@ export const Messages = {
             kind: "factory" | "template" | "direct",
           ) =>
             `${packName}（${active ? "启用" : "停用"}, ${kind === "factory" ? "工厂生成" : kind === "template" ? "模板生成" : "直接声明"}）`,
-          text0085: (id: string | number) => `非法物品标识符 ${id}`,
           text0086: (raw: string | number) => `非法原版材质 ${raw}`,
           text0087: (material: string | number) =>
             `找不到原版物品材质 ${material}`,
@@ -1994,7 +1973,7 @@ export const Messages = {
           text0002: "传给当前层模板的参数",
           text0003: "完整替换模板结果的顶层值",
           text0004: "深度合并到模板结果的值",
-          text0005: "启用该条目（26.7.4 不建议用于单项禁用）",
+          text0005: "启用该条目（26.9.2 不建议用于单项禁用）",
           text0006: "输出模板展开结果",
           text0007: "服务端原版物品材质",
           text0008: "客户端看到的原版物品材质（Premium）",
@@ -2011,7 +1990,6 @@ export const Messages = {
           text0019: "物品事件和函数",
           text0020: "按配置版本更新旧物品",
           text0021: "物品浏览器分类 ID",
-          text0022: "跳过客户端模型混淆（Premium）",
           text0023: "切换物品时播放手部动画",
           text0024: "允许 GUI 中的超尺寸模型",
           text0025: "切换动画缩放",
@@ -2160,7 +2138,6 @@ export const Messages = {
           text0167: "命中流体表面后放置关联家具",
           text0168: "执行打火石点火行为",
           text0169: "允许物品投入堆肥桶",
-          text0170: "执行斧类剥皮、除蜡和刮氧化行为",
           text0171: "放置两格高方块",
           text0172: "在墙面放置方块",
           text0173: "在天花板放置方块",
@@ -2236,7 +2213,6 @@ export const Messages = {
           text0243: "物品 ID",
           text0244: "需要数量 NumberProvider",
           text0245: "成功概率 NumberProvider",
-          text0246: "复用上一次随机数",
           text0247: "最小距离 NumberProvider",
           text0248: "最大距离 NumberProvider",
           text0249: "第一个文本值",
@@ -2312,7 +2288,7 @@ export const Messages = {
           text0319:
             "玩家选择器；scalar 仅支持 self/all/@s/@a, 也可写含必填 type 的 mapping",
           text0320:
-            "玩家选择器；CE 加载时允许省略, 但 26.7.4 执行此函数时会直接使用 selector, 缺失可能触发空指针；建议写 self/all/@s/@a",
+            "玩家选择器；CE 加载时允许省略, 但 26.9.2 执行此函数时会直接使用 selector, 缺失可能触发空指针；建议写 self/all/@s/@a",
           text0321: "玩家选择器类型；mapping 不接受 @s/@a",
           text0322: "粒子使用的方块状态字符串（必填）",
           text0323:
@@ -2426,7 +2402,6 @@ export const Messages = {
           text0430: "变量名",
           text0431: "NumberProvider 数值",
           text0432: "文本",
-          text0433: "保存为整数",
           text0434: "图标物品",
           text0435: "MiniMessage 内容",
           text0436: "进度类型",
@@ -2529,7 +2504,7 @@ export const Messages = {
           text0533: "归一化损耗",
           text0534: "时间来源",
           text0535: "平滑摆动",
-          text0536: "26.7.4 实际写入 period 的字段",
+          text0536: "26.9.2 实际写入 period 的字段",
           text0537: "读取剩余使用时间",
           text0538: "floats 数组索引",
           text0539: "方块状态属性名",
@@ -2704,7 +2679,7 @@ export const Messages = {
           text0705: "固定朝西",
           text0706: "固定朝南",
           text0707: "物品行为类型",
-          text0708: "可解析, 但 26.7.4 没有实际触发点",
+          text0708: "可解析, 但 26.9.2 没有实际触发点",
           text0709: "事件函数列表",
           text0710: "列表写法的触发器",
           text0711: "列表写法的函数组",
@@ -2748,7 +2723,6 @@ export const Messages = {
       },
       jukebox: {
         parser: {
-          text0001: (id: string) => `非法唱片机曲目标识符 ${id}`,
           text0002: "唱片机曲目 sound 必须是资源标识符",
           text0003: "唱片机曲目 length 必须是数字",
           text0004: (id: string) =>
@@ -2774,9 +2748,6 @@ export const Messages = {
             `${label} 同时配置了同一字段的多个别名: ${aliases}`,
           text0004: (label: string) => `${label} 缺少必填的 type`,
           text0005: (label: string, type: string) =>
-            `${label}使用了未知类型 ${type}`,
-          text0006: (label: string) => `${label} 缺少必填的 type`,
-          text0007: (label: string, type: string) =>
             `${label}使用了未知类型 ${type}`,
           text0008: "条件",
           text0009: (entryPath: string) => `${entryPath} 必须是条件映射`,
@@ -2820,17 +2791,12 @@ export const Messages = {
           text0040: "战利品池",
           text0041: (poolPath: string) => `${poolPath} 必须是战利品池映射`,
           text0042: "战利品池",
-          text0043: (id: string) => `非法原版掉落注入 ID ${id}`,
           text0044: (id: string) => `原版掉落注入 ${id} 必须是映射`,
           text0045: (id: string) => `原版掉落注入 ${id}`,
           text0046: "原版掉落注入",
           text0047: "原版掉落注入 override 必须是布尔值",
-          text0048: "原版掉落注入 target 不能为空",
           text0049: "原版掉落注入 target 必须是非空 ID 或方块状态",
-          text0050: (entity: string) => `非法原版实体 ID ${entity}`,
-          text0051: (entity: string) => `找不到原版实体类型 ${entity}`,
           text0052: (lootId: string) => `非法战利品表 ID ${lootId}`,
-          text0053: (id: string) => `非法战利品表 ID ${id}`,
           text0054: (id: string) => `战利品表 ID ${id} 在当前 resources 中重复`,
           text0055: (packName: string, activeLabel: string) =>
             `${packName}（${activeLabel}）`,
@@ -2880,8 +2846,6 @@ export const Messages = {
           text0040: "向指定的 Minecraft 原版方块或方块状态追加掉落",
           text0041: "向指定的 Minecraft 原版实体类型追加掉落",
           text0042: "原版掉落注入目标类型",
-          text0043: "目标原版实体类型；可写单个 ID 或列表",
-          text0044: "目标原版方块或完整方块状态；可写单个值或列表",
           text0045: "覆盖原版掉落；否则在原版掉落后追加",
           text0046: "要追加的内联战利品或战利品表 ID",
           text0047: "战利品池列表；每个池独立执行抽取",
@@ -3014,9 +2978,9 @@ export const Messages = {
           text0002:
             "此 pack 当前未启用, 所以不会影响当前 active 批次；启用后仍会触发该缺陷",
           text0003:
-            "当前真实行为预览会清空这一类的占位候选；同时进度解析器本身不处理内容, CE 26.7.4 无论如何都不会注册任何进度",
+            "当前真实行为预览会清空这一类的占位候选；同时进度解析器本身不处理内容, CE 26.9.2 无论如何都不会注册任何进度",
           text0004:
-            "安全预览仅隐藏此条目并保留同类占位候选；但进度解析器本身不处理内容, CE 26.7.4 无论如何都不会注册任何进度",
+            "安全预览仅隐藏此条目并保留同类占位候选；但进度解析器本身不处理内容, CE 26.9.2 无论如何都不会注册任何进度",
           text0005: (family: string) =>
             `当前真实行为预览会清空 ${family} family 的全部候选`,
           text0006:
@@ -3027,7 +2991,7 @@ export const Messages = {
             enabled: string,
             consequence: string,
           ) =>
-            `CraftEngine 26.7.4 会把 ${family} 条目 ${rawId} 的 enable=${enabled} 转换为 false, 并中止整个 parser 批次, 而非只跳过此条目；${consequence}`,
+            `CraftEngine 26.9.2 会把 ${family} 条目 ${rawId} 的 enable=${enabled} 转换为 false, 并中止整个 parser 批次, 而非只跳过此条目；${consequence}`,
         },
         packMetadata: {
           text0001: (value: number) => `类似布尔值的数字无效: ${value}`,
@@ -3057,7 +3021,7 @@ export const Messages = {
           text0018: "Paper 1.20.2+ PotionMix 酿造配方",
           text0019: "要求物品具有指定附魔及至少指定等级",
           text0020:
-            "要求全部子 predicate 成立；26.7.4 的非空组合存在已知实现缺陷",
+            "要求全部子 predicate 成立；26.9.2 的非空组合存在已知实现缺陷",
           text0021: "要求指定数据组件与配置值完全相等（1.20.5+）",
           text0022:
             "用当前 ItemBuildContext 应用 CraftEngine item data processors",
@@ -3072,7 +3036,7 @@ export const Messages = {
           text0030: "取得全部材料 identity 后解锁；默认继承 config.yml",
           text0031: "玩家加入时直接发现该配方, 默认 false",
           text0032:
-            "启用该条目；CE 26.7.4 的 enable:false 会中止整个 parser 批次",
+            "启用该条目；CE 26.9.2 的 enable:false 会中止整个 parser 批次",
           text0033: "把模板展开后的配方 section 输出到服务端日志",
           text0034: "工作台分类, 默认 misc",
           text0035: "建筑",
@@ -3115,12 +3079,12 @@ export const Messages = {
           text0068: "允许的物品 ID、#item tag 或其 OR 列表",
           text0069: "匹配所需的最小 stack amount, 默认 1；parser 不限制范围",
           text0070:
-            "一个 predicate 或 predicate 列表；26.7.4 应只配置一个非空 predicate",
+            "一个 predicate 或 predicate 列表；26.9.2 应只配置一个非空 predicate",
           text0071: "把该 Ingredient 标记为 crafting transform 的唯一 source",
           text0072:
             "Ingredient data-component predicate 类型；裸名补 craftengine namespace",
           text0073: "附魔 ID 到最低等级 1..255 的映射",
-          text0074: "全部必须成立的子 predicate；26.7.4 非空列表存在已知缺陷",
+          text0074: "全部必须成立的子 predicate；26.9.2 非空列表存在已知缺陷",
           text0075: "要精确比较的数据组件 ID",
           text0076: "交给该 component codec 解析的 NBT-compatible 值",
           text0077: "结果物品 ID",
@@ -3184,7 +3148,7 @@ export const Messages = {
           text0005: "聊天表情及图像替换规则",
           text0006: "自定义装备外观与装备层",
           text0007: "自定义物品定义",
-          text0008: "自定义家具定义；CE 26.7.4 不接受 furnitures",
+          text0008: "自定义家具定义；CE 26.9.2 不接受 furnitures",
           text0009: "原版方块状态到载体状态的直接映射",
           text0010: "自定义方块定义",
           text0011: "合成、烹饪、切石、锻造与酿造配方",
@@ -3194,12 +3158,18 @@ export const Messages = {
           text0015: "自定义声音事件定义",
           text0016: "自定义唱片歌曲定义",
           text0017: "命名的自定义战利品表",
-          text0018: "原版方块与实体战利品覆盖",
+          text0018: "把 CraftEngine 掉落绑定到原版掉落事件",
           text0019: "声明不参与资源包纹理或 JSON 优化的路径",
           text0020: "通过 Minecraft 读取规则注册已配置地物",
           text0021: "组合已配置地物、放置规则与世界筛选条件",
           text0022: "自定义画尺寸、资源与展示元数据",
-          text0023: "保留的进度入口；CE 26.7.4 的解析方法为空",
+          text0023: "保留的进度入口；CE 26.9.2 的解析方法为空",
+          text0024: "自定义实体默认属性与实体标签",
+          text0025: "自定义属性运算阶段",
+          text0026: "CraftEngine 服务端自定义属性",
+          text0027: "按装备件数激活的属性、药水与事件套装",
+          text0028: "按伤害来源和目标选择伤害公式及后效果",
+          text0029: "生成或扩展 Minecraft sprite atlas",
         },
       },
       resource: {
@@ -3211,11 +3181,10 @@ export const Messages = {
           text0005: "进度",
           text0006: (label: string, rawId: string) =>
             `${label} ${rawId} 必须是映射`,
-          text0007: (label: string, id: string) => `非法${label}标识符 ${id}`,
           text0008:
-            "CraftEngine 26.7.4 的进度解析器不注册任何进度；此条目仅建立编辑器导航索引",
+            "CraftEngine 26.9.2 的进度解析器不注册任何进度；此条目仅建立编辑器导航索引",
           text0009: (field: string) =>
-            `CraftEngine 26.7.4 的进度解析器不注册任何进度；字段 ${field} 及其他业务字段会被忽略`,
+            `CraftEngine 26.9.2 的进度解析器不注册任何进度；字段 ${field} 及其他业务字段会被忽略`,
           text0010: (label: string, id: string) =>
             `${label} ID ${id} 在当前 resources 中重复`,
           text0011: (
@@ -3228,7 +3197,7 @@ export const Messages = {
           text0001: "启用",
           text0002: "禁用",
           text0003:
-            "启用该条目；CE 26.7.4 中 false 会提前终止该资源类型的整批加载, 不建议用于单项禁用",
+            "启用该条目；CE 26.9.2 中 false 会提前终止该资源类型的整批加载, 不建议用于单项禁用",
           text0004: "输出模板展开后的条目配置, 然后继续正常解析",
           text0005: "可选权限节点；只有解析上下文存在 player 时才检查",
           text0006:
@@ -3273,9 +3242,9 @@ export const Messages = {
           text0033:
             "跳过 JSON/.mcmeta 优化的生成 pack 根目录相对路径；接受字符串或列表以 / 结尾表示大小写敏感的目录前缀；否则缺少 .json/.mcmeta 时自动补 .json不支持通配符、反斜杠或绝对路径",
           text0034:
-            "公共 ID 外壳开关；false 会触发 26.7.4 整类提前返回缺陷, 但不会注册进度",
+            "公共 ID 外壳开关；false 会触发 26.9.2 整类提前返回缺陷, 但不会注册进度",
           text0035:
-            "只打印模板展开后的条目；26.7.4 不会解析或注册任何进度字段",
+            "只打印模板展开后的条目；26.9.2 不会解析或注册任何进度字段",
           text0036:
             "源原版方块状态；键和值都必须能被当前服务器版本的 Mojang BlockStateParser 解析",
           text0037:
@@ -3293,8 +3262,6 @@ export const Messages = {
       },
       schema: {
         configFile: {
-          text0001:
-            '配置格式版本, 26.7.4 必须保持字符串 "84"；键缺失会触发 NullPointerException',
           text0002: "启动时是否初始化 bStats；修改后必须重启",
           text0003: "启动后是否检查 CraftEngine 更新；修改后必须重启",
           text0004: "强制 Adventure locale；空字符串表示跟随玩家/服务端 locale",
@@ -3304,7 +3271,6 @@ export const Messages = {
           text0008: "真实方块容量、声音、光照、Bukkit Material 与破坏预测",
           text0009: "家具基础实体、碰撞实体和光照设置",
           text0010: "表情解析位置和单次解析上限",
-          text0011: "loot 兼容来源；26.7.4 的 entity-sources 路径存在读取 bug",
           text0012: "非法字符过滤、自动 codepoint 和偏移字符",
           text0013: "数据包拦截、mod channel 与 ItemStack 加密",
           text0014: "自定义配方、原版配方禁用、来源和解锁策略",
@@ -3313,18 +3279,8 @@ export const Messages = {
           text0017: "客户端实体剔除设置（Premium）",
           text0018: "配置加载线程、日志过滤与兼容 hook",
           text0019: "调试分类、忽略数据包与堆栈输出",
-          text0020: "26.7.4 仅缓存且无公开调用者的旧 Bedrock 设置",
-          text0021: "禁用托管与上传",
-          text0022: "由 CraftEngine 内置 HTTP 服务托管资源包",
-          text0023: "使用已有公开 URL, 不执行上传",
-          text0024: "上传到 LobFile",
-          text0025: "上传到 S3 兼容对象存储",
-          text0026: "上传到 OpenList",
-          text0027: "使用兼容 AList 的 OpenList 实现；必须精确写 alist",
-          text0028: "上传到 Dropbox",
-          text0029: "上传到 OneDrive",
-          text0030: "上传到 GitLab 项目",
-          text0031: "任一子 matcher 成立；缺失或空 terms 在 26.7.4 中恒 true",
+          text0020: "26.9.2 仅缓存且无公开调用者的旧 Bedrock 设置",
+          text0031: "任一子 matcher 成立；缺失或空 terms 在 26.9.2 中恒 true",
           text0032: "全部子 matcher 成立；缺失或空 terms 恒 true",
           text0033: "对全部子 matcher 的 all-of 结果取反；空 terms 恒 false",
           text0034: "资源包相对路径包含指定区分大小写文本",
@@ -3341,8 +3297,6 @@ export const Messages = {
           text0045: "合并旧版物品模型 overrides",
           text0046: "term 匹配时递归执行 resolution",
           text0047: (name: string, suffix: string) => `${name} 开关${suffix}`,
-          text0048:
-            "最终资源包 ZIP 路径；相对路径以 plugins/CraftEngine 为基准",
           text0049: "客户端资源包支持版本范围",
           text0050: "写入 pack.mcmeta 的 MiniMessage 资源包描述",
           text0051: "overlay 名称模板, 必须包含字面量 {version}",
@@ -3355,8 +3309,7 @@ export const Messages = {
           text0058: "生成资源包时排除 core shaders",
           text0059: "资源包模型、纹理和 atlas 校验/修复",
           text0060: "PNG 与 JSON 无损优化",
-          text0061: "为 BlueMap 等地图插件生成兼容资源包",
-          text0062: "26.7.4 只读取但不执行的 PackSquash 设置",
+          text0062: "26.9.2 只读取但不执行的 PackSquash 设置",
           text0063: "资源包保护与混淆设置（Premium）",
           text0064: "资源包发送、上传、代理和托管",
           text0065: "资源冲突 matcher/resolution 规则；首个匹配项生效",
@@ -3365,20 +3318,14 @@ export const Messages = {
           text0068: "玩家拒绝资源包时踢出",
           text0069: "资源包应用失败时踢出；缺键回退 true",
           text0070: "发送/下载时严格验证玩家 UUID",
-          text0071: "资源包生成完成后自动上传到当前 host",
-          text0072: "上传成功后重新向在线玩家发送资源包",
-          text0073: "上传使用的文件路径；不要求等于 resource-pack.path",
-          text0074: "Java HTTP client 代理；scheme 在 26.7.4 只供 S3 使用",
-          text0075:
-            "host section 或 host section 列表；仅使用第一项, 任一项失败则整体退回 none",
-          text0076: "生成未保护的标准 ZIP（Premium）",
+          text0074: "Java HTTP client 代理；scheme 在 26.9.2 只供 S3 使用",
           text0077:
-            "逐 method 读取的保护开关；公开 26.7.4 ZIP 生成器无调用证据",
-          text0078: "仅解析；公开 26.7.4 固定提交无 getter 调用者",
-          text0079: "仅解析；公开 26.7.4 固定提交无 getter 调用者",
-          text0080: "仅解析；公开 26.7.4 固定提交无 getter 调用者",
-          text0081: "仅解析；公开 26.7.4 固定提交无 getter 调用者",
-          text0082: "仅解析；公开 26.7.4 固定提交无 getter 调用者",
+            "逐 method 读取的保护开关；公开 26.9.2 ZIP 生成器无调用证据",
+          text0078: "仅解析；公开 26.9.2 固定提交无 getter 调用者",
+          text0079: "仅解析；公开 26.9.2 固定提交无 getter 调用者",
+          text0080: "仅解析；公开 26.9.2 固定提交无 getter 调用者",
+          text0081: "仅解析；公开 26.9.2 固定提交无 getter 调用者",
+          text0082: "仅解析；公开 26.9.2 固定提交无 getter 调用者",
           text0083: "namespace/path/atlas/item-model 资源混淆（Premium）",
           text0084: "资源混淆总开关；社区版强制 false",
           text0085: "混淆 long seed；0 表示随机 seed",
@@ -3411,7 +3358,7 @@ export const Messages = {
           text0111:
             "按内部 state ID 向 Bukkit 暴露伪装 Material；首次加载后需重启",
           text0112: "向 Bukkit Material 注入枚举常量；首次加载后需重启",
-          text0113: "26.7.4 读取但公开固定提交无 getter 调用者的破坏预测设置",
+          text0113: "26.9.2 读取但公开固定提交无 getter 调用者的破坏预测设置",
           text0114:
             "启用 offset 字体；section 缺失或 false 会令 OffsetFont 为 null",
           text0115: "offset glyph 所在 font Key",
@@ -3425,14 +3372,11 @@ export const Messages = {
             "最低客户端版本；接受注册版本名、server/server_version、latest/latest_version",
           text0122:
             "最高客户端版本；接受注册版本名、server/server_version、latest/latest_version",
-          text0123: "资源包校验总开关",
           text0124: "把缺失纹理补入 atlas；启用 obfuscation 时不会执行",
           text0125: "修复模型中的 #missing 引用",
           text0126: "为较低客户端版本生成兼容模型",
           text0127: "为 26.1 起变化的 textures map 生成兼容 overlay",
           text0128: "为低版本修正高版本 element rotation angle",
-          text0129:
-            "资源包优化总开关；26.7.4 对根层 pack.png/pack.mcmeta 的 exclude 收集条件写反",
           text0130: "PNG 无损优化",
           text0131: "JSON 与 .mcmeta 压缩优化",
           text0132: "启用 PNG 无损优化",
@@ -3441,13 +3385,9 @@ export const Messages = {
             "排除的 pack 相对路径；目录以 / 结尾, 其他无扩展名项自动补 .png",
           text0135: "启用 JSON/.mcmeta 压缩优化",
           text0136: "排除的 pack 相对路径；目录以 / 结尾, 其他项自动补 .json",
-          text0137: "生成地图插件兼容 ZIP",
-          text0138: "地图插件兼容 ZIP 路径；相对 plugins/CraftEngine",
-          text0139: "26.7.4 只解析；生成分支为空, 没有实际 PackSquash 处理",
-          text0140: "26.7.4 只缓存且无调用者的 PackSquash 可执行文件路径",
-          text0141: "26.7.4 只缓存且无调用者的 PackSquash 配置路径",
-          text0142: "Premium 下生成未保护的普通 ZIP",
-          text0143: "未保护 ZIP 路径；相对 plugins/CraftEngine",
+          text0139: "26.9.2 只解析；生成分支为空, 没有实际 PackSquash 处理",
+          text0140: "26.9.2 只缓存且无调用者的 PackSquash 可执行文件路径",
+          text0141: "26.9.2 只缓存且无调用者的 PackSquash 配置路径",
           text0144: "；公开固定提交未确认消费",
           text0145: "代码读取但默认文件未出现；公开固定提交未确认消费",
           text0146: "item model 混淆；实际值与 obfuscation.enable 相与",
@@ -3460,7 +3400,7 @@ export const Messages = {
           text0153: "启用 path anti-unzip 结构",
           text0154: "代码读取但默认文件未写；缺键回退 obf_block",
           text0155:
-            "26.7.4 配置无效: 源码再次读取 block-source；此键不会被消费",
+            "26.9.2 配置无效: 源码再次读取 block-source；此键不会被消费",
           text0156: "混淆 atlas 文件名前缀；无非空/路径合法性检查",
           text0157: "每个 atlas canvas 图像数；Math.max(0,value), -1 实际变 0",
           text0158: "启用 Java HTTP client 代理",
@@ -3468,7 +3408,7 @@ export const Messages = {
           text0160: "代理端口；无 1..65535 本地夹取",
           text0161: "可选代理用户名",
           text0162: "可选代理密码",
-          text0163: "代理 scheme；26.7.4 只被 S3 host 使用",
+          text0163: "代理 scheme；26.9.2 只被 S3 host 使用",
           text0164: "点击背包物品时运行 updater；creative 玩家不适用",
           text0165: "丢弃物品时运行 updater",
           text0166: "拾取物品时运行 updater",
@@ -3496,16 +3436,15 @@ export const Messages = {
           text0188: "内部 state ID 或闭区间到 Bukkit Material Key 的动态映射",
           text0189:
             "动态 state ID（如 12）或闭区间（如 12~18）对应的 Bukkit Material",
-          text0190: "26.7.4 代码读取但公开固定提交无 getter 调用者；缺键 true",
-          text0191: "至少 1；26.7.4 公开固定提交无 getter 调用者",
-          text0192: "至少 0.0；26.7.4 公开固定提交无 getter 调用者",
+          text0190: "26.9.2 代码读取但公开固定提交无 getter 调用者；缺键 true",
+          text0191: "至少 1；26.9.2 公开固定提交无 getter 调用者",
+          text0192: "至少 0.0；26.9.2 公开固定提交无 getter 调用者",
           text0193: "隐藏用于状态存储的家具技术实体",
           text0194: "家具碰撞实体类型；未知值使配置重载失败",
           text0195: "家具光照系统；只在首次配置加载时解析",
           text0196: "家具光照系统开关；修改后必须重启",
           text0197: "允许解析表情的文本位置",
           text0198: "单次最多解析的表情数；无最小值夹取, 缺键回退 32",
-          text0199: "26.7.4 默认文件写入但源码不读取；修改此路径无效",
           text0200: "过滤玩家发送的原始图像/偏移字符",
           text0201: "自动分配 bitmap codepoint 的起始值",
           text0202: "水平偏移字符和 font",
@@ -3514,7 +3453,6 @@ export const Messages = {
           text0205: "动态 font Key 对应的自动 codepoint 起始整数",
           text0206: "禁用聊天举报相关协议；只在首次加载时读取, 修改后重启",
           text0207: "跳过网络层物品转换和 client-bound 数据",
-          text0208: "启用 Netty item codec 定向优化；修改后重启",
           text0209: "各类 Component/ItemStack 数据包拦截开关",
           text0210: "CraftEngine 客户端模组 channel 设置",
           text0211: "网络 ItemStack CompoundTag 加密；首次加载后需重启",
@@ -3533,8 +3471,6 @@ export const Messages = {
           text0223: "玩家加入时解锁全部或指定配方",
           text0224:
             "为 furnace 等 block entity 注入自定义条件；首次加载后需重启",
-          text0225:
-            "26.7.4 路径 bug: 此 recipe 路径实际控制 loot entity sources",
           text0226: "禁用全部原版配方；为 true 时 list 不决定选择范围",
           text0227: "要禁用的原版 recipe Key 列表",
           text0228: "玩家加入时解锁全部 vanilla 与 custom 配方",
@@ -3603,8 +3539,8 @@ export const Messages = {
           text0285:
             "与 packet.getClass().toString() 精确、区分大小写比较的完整类字符串",
           text0286: "部分配置/资源错误输出完整堆栈",
-          text0287: "代码读取但 26.7.4 固定提交仅缓存且无公开调用者；缺键 true",
-          text0288: "代码读取但 26.7.4 固定提交仅缓存且无公开调用者；缺键 !",
+          text0287: "代码读取但 26.9.2 固定提交仅缓存且无公开调用者；缺键 true",
+          text0288: "代码读取但 26.9.2 固定提交仅缓存且无公开调用者；缺键 !",
           text0289:
             "host 类型；比较区分大小写, 未知类型或任一 host 失败会使整个列表退回 none；也接受 craftengine:<type>",
           text0290: "从该 host 的 CE_* 环境变量读取凭据；开启后忽略相应配置值",
@@ -3622,8 +3558,6 @@ export const Messages = {
           text0300: "使用一次性、1 分钟过期的下载 token",
           text0301: "额外核对 token 绑定 UUID 与版本/User-Agent",
           text0302: "self host 限流 section；section 缺失即关闭",
-          text0303: "26.7.4 读取 bug: 必须放 host 根层才生效；0 不限",
-          text0304: "26.7.4 读取 bug: 必须放 host 根层才生效；缺键 50000",
           text0305: "LobFile API key；env 模式读取 CE_LOBFILE_API_KEY",
           text0306: "OpenList API 根 URL；调用时直接拼 /api/...",
           text0307: "OpenList 用户名；env 模式读取 CE_OPENLIST_USERNAME",
@@ -3673,8 +3607,8 @@ export const Messages = {
           text0345: "每玩家 UUID 下载请求 token bucket",
           text0346: "S3 multipart upload；section 存在才解析",
           text0347: "N/S 格式；每 IP 每 S 秒补 N 个 token",
-          text0348: "默认文件位置, 但 26.7.4 不读取嵌套值；应放 self host 根层",
-          text0349: "默认文件位置, 但 26.7.4 不读取嵌套值；应放 self host 根层",
+          text0348: "默认文件位置, 但 26.9.2 不读取嵌套值；应放 self host 根层",
+          text0349: "默认文件位置, 但 26.9.2 不读取嵌套值；应放 self host 根层",
           text0350: "CDN domain；cdn section 存在时必填非空",
           text0351: "CDN protocol；默认 https",
           text0352: "连接 timeout 秒；给出时必须 >=1",
@@ -3692,9 +3626,9 @@ export const Messages = {
           text0363:
             "路径 matcher 类型；允许 craftengine:<type>, 也允许 ! 前缀反相；正式类型名没有连字符别名",
           text0364:
-            "子 matcher section 或 list；缺失/空列表在 26.7.4 中恒 true",
+            "子 matcher section 或 list；缺失/空列表在 26.9.2 中恒 true",
           text0365:
-            "子 matcher section 或 list；缺失/空列表在 26.7.4 中恒 true",
+            "子 matcher section 或 list；缺失/空列表在 26.9.2 中恒 true",
           text0366: "先对多个子 matcher 作 all-of 再反相；缺失/空列表恒 false",
           text0367: "规范反斜杠后做区分大小写 contains",
           text0368: "规范反斜杠后做区分大小写完整相等",
@@ -3724,14 +3658,8 @@ export const Messages = {
           text0003: (pathName: string) => `${pathName} 缺少非空 name`,
           text0004: (pathName: string) =>
             `${pathName}.type 只能是 file 或 event`,
-          text0005: "声音文件 volume",
-          text0006: "声音文件 pitch",
-          text0007: (pathName: string) => `${pathName}.weight 必须是正整数`,
           text0008: (pathName: string, key: string) =>
             `${pathName}.${key} 必须是布尔值`,
-          text0009: (pathName: string) =>
-            `${pathName}.attenuation_distance 必须是数字`,
-          text0010: (id: string) => `非法声音事件 ID ${id}`,
           text0011: (id: string) => `声音事件 ${id} 必须是映射`,
           text0012: (key: string) => `未知声音事件字段 ${key}`,
           text0013: "声音事件 replace 必须是布尔值",
@@ -3763,9 +3691,6 @@ export const Messages = {
           text0008: "引用的声音事件 ID",
           text0009: "实际 OGG 文件路径（不写 .ogg 后缀）",
           text0010: "声音条目类型",
-          text0011: "文件音量倍率；支持固定值、min~max 或 NumberProvider",
-          text0012: "文件音高倍率；支持固定值、min~max 或 NumberProvider",
-          text0013: "随机选择权重, 必须是正整数",
           text0014: "以流式方式播放长音频",
           text0015: "声音开始衰减的距离",
           text0016: "资源载入时预加载该文件",
@@ -3808,7 +3733,6 @@ export const Messages = {
           text0028: (label: string | number, rawId: string | number) =>
             `${label} ${rawId} 必须是映射`,
           text0029: "全局变量 ID 不能求值为 null 或复合值",
-          text0030: (id: string | number) => `非法模板标识符 ${id}`,
           text0031: (id: string | number) => `模板 ID ${id} 重复`,
           text0032: (section: string | number, id: string | number) =>
             `${section} ID ${id} 重复`,
@@ -3918,14 +3842,10 @@ export const Messages = {
             `图片 ${rawId} 的 grid_size 必须是 rows,columns 字符串`,
           text0002: (rawId: string) =>
             `图片 ${rawId} 的 grid_size 必须包含两个正整数`,
-          text0003: (rawId: string, semantic: string) =>
-            `图片 ${rawId} 的 ${semantic} 必须是非负整数`,
           text0004: (rawId: string) =>
             `图片 ${rawId} 的 ascent 不能大于 height`,
           text0005: (rawId: string, fieldName: string) =>
             `图片 ${rawId} 的 ${fieldName} 必须是非空字符串`,
-          text0006: (rawId: string) =>
-            `图片 ${rawId} 的 char 必须是字符串或字符串列表`,
         },
         opaque: {
           text0001: (key: string) =>
@@ -3969,7 +3889,7 @@ export const Messages = {
           text0015: (rawId: string, fieldPath: string) =>
             `配方 ${rawId} 的 ${fieldPath} 必须是非空字符串列表`,
           text0016: (rawId: string) =>
-            `配方 ${rawId} 的 all_of.predicates 非空列表在 CraftEngine 26.7.4 中存在已知运行时缺陷`,
+            `配方 ${rawId} 的 all_of.predicates 非空列表在 CraftEngine 26.9.2 中存在已知运行时缺陷`,
           text0017: (rawId: string, fieldPath: string) =>
             `配方 ${rawId} 的 ${fieldPath} 必须包含至少一个 display context`,
           text0018: (rawId: string) =>
@@ -3985,7 +3905,7 @@ export const Messages = {
           text0023: (rawId: string) =>
             `配方 ${rawId} 的 shapeless_transform 必须恰好有一个 source:true ingredient`,
           text0024: (rawId: string) =>
-            `配方 ${rawId} 在 CraftEngine 26.7.4 中同时使用 transform 与 visual_result 会触发已知 Premium 运行时缺陷`,
+            `配方 ${rawId} 在 CraftEngine 26.9.2 中同时使用 transform 与 visual_result 会触发已知 Premium 运行时缺陷`,
         },
         resource: {
           text0001: "自定义表情用途内容",
@@ -4012,7 +3932,7 @@ export const Messages = {
           text0013: (rawId: string, fieldName: string) =>
             `画作 ${rawId} 的 ${fieldName} 必须是字符串`,
           text0014: (rawId: string, key: string) =>
-            `进度 ${rawId} 的 ${key} 在 CraftEngine 26.7.4 中不会被解析或注册`,
+            `进度 ${rawId} 的 ${key} 在 CraftEngine 26.9.2 中不会被解析或注册`,
         },
         schema: {
           text0001: "启用当前配置条目",
@@ -4057,7 +3977,6 @@ export const Messages = {
           text0004: (fieldPath: string) => `${fieldPath} 的 type 必须是字符串`,
           text0005: (fieldPath: string, values: string) =>
             `${fieldPath} 只能是 ${values}`,
-          text0006: 'config.yml 的 config-version 必须是字符串 "84"',
           text0007: (fieldPath: string) =>
             `${fieldPath} 必须是 auto 或 1..65535 的整数`,
           text0008: (fieldPath: string) => `${fieldPath} 必须是字符串`,
@@ -4069,8 +3988,6 @@ export const Messages = {
             `config.yml 的 ${fieldPath} 必须是映射`,
           text0013: (fieldPath: string) =>
             `config.yml 的 ${fieldPath} 必须是列表`,
-          text0014:
-            "config.yml 的 resource-pack.delivery.hosting 必须是 host 映射或列表",
           text0015: (fieldPath: string) =>
             `config.yml 的 ${fieldPath} 必须是整数秒或映射`,
           text0016: (fieldPath: string) =>
@@ -4087,16 +4004,17 @@ export const Messages = {
           text0024: (fieldPath: string) => `${fieldPath} 必须是字符串列表`,
           text0025: (fieldPath: string) =>
             `${fieldPath} 必须是标量、标量列表或嵌套映射`,
-          text0026: 'commands.yml 的 config-version 必须是字符串 "84"',
-          text0027: "翻译文件 lang-version 必须是 65",
-          text0028: (key: string) =>
-            `pack.yml 的 subpack ID ${key} 不能包含路径分隔符、. 或 ..`,
-          text0029: "pack.yml 的 namespace 必须匹配 [a-z0-9_.-]+",
+          text0027: (from: string, to: string) =>
+            `翻译文件 lang-version 必须写成 ${from} 到 ${to} 之间的整数`,
           text0030: (fieldPath: string) =>
             `${fieldPath} 的每项都必须是以 / 开头的字符串`,
           text0031: (locale: string) => `翻译文件 ${locale}`,
           text0032: (feature: string, required: string) =>
             `commands.yml 的已启用功能 ${feature} 缺少 ${required}`,
+          text0033: (from: string, to: string) =>
+            `config.yml 的 ___version___ 必须写成 ${from} 到 ${to} 之间的整数; 旧版本号会被 CraftEngine 自动升级`,
+          text0034: (from: string, to: string) =>
+            `commands.yml 的 ___version___ 必须写成 ${from} 到 ${to} 之间的整数; 旧版本号会被 CraftEngine 自动升级`,
         },
         worldgen: {
           text0001: "Mojang codec 动态映射值",
@@ -4179,7 +4097,7 @@ export const Messages = {
           text0043: "IntProvider 类型；直接整数可作为 constant provider 简写",
           text0044: "placement modifier 类型；列表只包含锁定配置实际使用的类型",
           text0045:
-            "启用条目；CraftEngine 26.7.4 的 false 会提前终止整个 configured-feature 解析批次",
+            "启用条目；CraftEngine 26.9.2 的 false 会提前终止整个 configured-feature 解析批次",
           text0046: "把模板处理后的条目作为 JSON 输出到服务端日志",
           text0047: "由所选 feature 的运行时 Mojang codec 解析的配置对象",
           text0048: "允许生成的精确 biome ID；标量或列表, 列表内部为 OR",
@@ -4188,7 +4106,7 @@ export const Messages = {
           text0051:
             "允许生成的 dimension-type resource key；不是 Bukkit World.Environment 枚举",
           text0052:
-            "启用条目；CraftEngine 26.7.4 的 false 会提前终止整个 placed-feature 解析批次",
+            "启用条目；CraftEngine 26.9.2 的 false 会提前终止整个 placed-feature 解析批次",
           text0053: "把模板处理后的条目作为 JSON 输出到服务端日志",
           text0054:
             "已注册的已配置地物完整 ID, 或内联 ConfiguredFeature 对象",
@@ -4227,13 +4145,11 @@ export const Messages = {
           text0085: "树叶 BlockStateProvider",
           text0086: "树叶 placer 对象",
           text0087: "可选 root placer；字段由运行时 Mojang codec 决定",
-          text0088: "树下替换方块的 BlockStateProvider",
           text0089: "树木最小尺寸 feature-size 对象",
           text0090: "树木装饰器列表；空列表有效",
           text0091: "忽略藤蔓阻挡；默认 false",
-          text0092: "强制替换树下方块；默认 false",
           text0093:
-            "26.2+ 树干下方 BlockStateProvider；低版本必须用版本选择器排除",
+            "树干下方 BlockStateProvider; Minecraft 26.2 的 TreeConfiguration 里是必填字段",
           text0094:
             "非空 direct state 字符串, 或 {Name, Properties} BlockState；自定义方块优先用字符串保留身份",
           text0095: "非空加权状态列表",
@@ -4322,18 +4238,18 @@ export const Messages = {
           text0173: "最大 VerticalAnchor",
           text0174: "HeightProvider 类型；锁定配置验证 minecraft:uniform",
           text0175: "在两个 VerticalAnchor 之间均匀取高",
-          text0176: "CraftEngine 26.7.4 唯一自有 feature 的静态完整 config",
+          text0176: "CraftEngine 26.9.2 唯一自有 feature 的静态完整 config",
           text0177:
             "type 未知或属于运行时扩展；允许当前服务器 ConfiguredFeature.CODEC 接受的字段",
           text0178:
             "这些字段来自锁定内置配置；仍允许同版 Minecraft codec 的其他合法字段",
-          text0179: "CraftEngine 26.7.4 注入 provider 的静态完整直接字段",
+          text0179: "CraftEngine 26.9.2 注入 provider 的静态完整直接字段",
           text0180:
             "BlockStateProvider registry 随目标 Minecraft 或外部扩展变化",
           text0181:
             "BlockPredicate 由运行中 Minecraft codec 解析；这里只列出锁定配置验证的字段",
           text0182: "IntProvider 允许整数简写和运行时 registry 的其他类型",
-          text0183: "CraftEngine 26.7.4 biome 特例没有子字段",
+          text0183: "CraftEngine 26.9.2 biome 特例没有子字段",
           text0184:
             "PlacementModifier registry 随目标 Minecraft 或服务端扩展变化",
           text0185:
@@ -5356,7 +5272,7 @@ ${targetSelector}<h2>${eventId}</h2><p>${subtitle}</p><p class="muted">${sourceL
             `${detail}${required ? "（必填）" : ""}${optionalDependency ? `（需要 ${optionalDependency}）` : ""}`,
           text0056: (canonical: string) => `别名；归属 ${canonical}`,
           text0057: "首选拼写",
-          text0058: "；CE 26.7.4 不会注册任何进度",
+          text0058: "；CE 26.9.2 不会注册任何进度",
           text0059: "客户端语言",
           text0060: "服务端语言",
           text0061: (value: string, locales: string) => `${value} · ${locales}`,
@@ -5450,7 +5366,7 @@ ${targetSelector}<h2>${eventId}</h2><p>${subtitle}</p><p class="muted">${sourceL
           text0147: "表情",
           text0148: "已配置地物",
           text0149: "已放置地物",
-          text0150: "进度（CE 26.7.4 不处理）",
+          text0150: "进度（CE 26.9.2 不处理）",
           text0151: (description: string, noOp: string, alias: string) =>
             `${description}${noOp}（${alias}）`,
           text0152: "跳转到生成此模型的配置",
@@ -5586,6 +5502,16 @@ ${targetSelector}<h2>${eventId}</h2><p>${subtitle}</p><p class="muted">${sourceL
         text0015: "方块",
         text0016: "已配置地物",
         text0017: "已放置地物",
+      },
+      blueprintScript: {
+        text0001: (name: string, root: string) =>
+          `找不到 blueprint 文件 ${name}; 已在 ${root} 下查找`,
+        text0002: (id: string, location: string) =>
+          `找不到 js 脚本 ${id}; ${location}`,
+        text0003: "未发现已启用的 script 目录",
+        text0004: (roots: string) => `已在 ${roots} 下查找`,
+        text0005: (roots: string, count: string) =>
+          `已在 ${roots} 等 ${count} 个 script 目录下查找`,
       },
     },
     resources: {

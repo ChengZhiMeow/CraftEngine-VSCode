@@ -7,7 +7,6 @@ import { Messages } from "../../messages.js";
 import {
   NUMBER_PROVIDER_TYPES,
   numberProviderAllowsNestedField,
-  numberProviderConsumer,
   numberProviderFields,
   resolveNumberProviderType,
 } from "../number-provider/schema.js";
@@ -79,17 +78,14 @@ export function soundEntryFields(
       values: ["file", "event"],
       valueDetails: SOUND_ENTRY_TYPE_DETAILS,
     }),
-    numberProviderConsumer(
-      field("volume", Messages.src.config.sound.schema.text0011, {
-        snippet: "volume: ${0:1}",
-      }),
-    ),
-    numberProviderConsumer(
-      field("pitch", Messages.src.config.sound.schema.text0012, {
-        snippet: "pitch: ${0:1}",
-      }),
-    ),
-    field("weight", Messages.src.config.sound.schema.text0013, {
+    // CE 的 volume/pitch 走 getFloat, 只接受标量, 没有内联 number provider
+    field("volume", "文件音量倍率；支持数字与 CraftEngine 表达式", {
+      snippet: "volume: ${0:1}",
+    }),
+    field("pitch", "文件音高倍率；支持数字与 CraftEngine 表达式", {
+      snippet: "pitch: ${0:1}",
+    }),
+    field("weight", "随机选择权重；支持整数与 CraftEngine 表达式", {
       snippet: "weight: ${0:1}",
     }),
     field("stream", Messages.src.config.sound.schema.text0014, {
@@ -128,8 +124,7 @@ export function soundFieldsForContext(
       ? numberProviderFields(context.siblingValues.get("type"))
       : [];
   }
-  if (tail === "volume" || tail === "pitch")
-    return numberProviderFields(context.siblingValues.get("type"));
+  if (tail === "volume" || tail === "pitch") return [];
   return soundEntryFields(context.siblingValues.get("type"));
 }
 

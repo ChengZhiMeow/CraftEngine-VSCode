@@ -129,6 +129,10 @@ const ELEMENT_FIELDS = new Map<string, ReadonlySet<string>>([
       "display-transform",
       "tint_source",
       "tint-source",
+      "tint_sources",
+      "tint-sources",
+      "copy_data",
+      "copy-data",
       ...DISPLAY_ELEMENT_FIELDS,
     ]),
   ],
@@ -162,6 +166,10 @@ const ELEMENT_FIELDS = new Map<string, ReadonlySet<string>>([
       "apply-dyed-color",
       "tint_source",
       "tint-source",
+      "tint_sources",
+      "tint-sources",
+      "copy_data",
+      "copy-data",
     ]),
   ],
   [
@@ -179,6 +187,10 @@ const ELEMENT_FIELDS = new Map<string, ReadonlySet<string>>([
       "small",
       "tint_source",
       "tint-source",
+      "tint_sources",
+      "tint-sources",
+      "copy_data",
+      "copy-data",
     ]),
   ],
   [
@@ -190,6 +202,16 @@ const ELEMENT_FIELDS = new Map<string, ReadonlySet<string>>([
       "pitch",
       "sight_trace",
       "sight-trace",
+      "tint",
+      "tints",
+      "tint_source",
+      "tint-source",
+      "tint_bone",
+      "tint-bone",
+      "tint_bones",
+      "tint-bones",
+      "tint_children",
+      "tint-children",
     ]),
   ],
   ["model_engine", new Set(["model", "position", "yaw", "pitch"])],
@@ -262,9 +284,14 @@ function field(
   raw: Readonly<Record<string, unknown>>,
   names: readonly string[],
 ): [string, unknown] | undefined {
-  for (const name of names)
-    if (Object.hasOwn(raw, name) && raw[name] !== null)
+  for (const name of names) {
+    if (
+      Object.hasOwn(raw, name) &&
+      raw[name] !== null &&
+      raw[name] !== undefined
+    )
       return [name, raw[name]];
+  }
   return undefined;
 }
 
@@ -319,48 +346,6 @@ function booleanValue(value: unknown, fallback: boolean): boolean {
   } catch {
     return fallback;
   }
-}
-
-function validateTintSourceType(
-  value: unknown,
-  source: ConfigurationSource,
-  pathName: string,
-  options: FurnitureBuildOptions,
-  issues: CoreIssue[],
-): void {
-  if (!isRecord(value) || value.type === undefined) return;
-  if (typeof value.type !== "string" || value.type.trim() === "") {
-    issues.push(
-      issue(
-        source,
-        "unknown-furniture-tint-source-type",
-        Messages.src.config.furniture.parser.text0001(pathName),
-        "error",
-        `${pathName}.type`,
-      ),
-    );
-    return;
-  }
-  if (localRegistryDiscriminator(value.type) === "default") return;
-  const registeredSyntax = isValidRegistryDiscriminator(value.type);
-  const severity = registeredSyntax
-    ? options.unknownExtensionSyntax === "warning"
-      ? "warning"
-      : undefined
-    : "error";
-  if (severity)
-    issues.push(
-      issue(
-        source,
-        "unknown-furniture-tint-source-type",
-        Messages.src.config.furniture.parser.text0002(
-          registeredSyntax,
-          value.type,
-        ),
-        severity,
-        `${pathName}.type`,
-      ),
-    );
 }
 
 function vector3(value: unknown): FurnitureVector3 | undefined {
@@ -462,27 +447,138 @@ function warnAliasShadow(
     );
 }
 
+  // CraftEngine SeatConfig 映射形式: position/yaw/limit_player_rotation/force_player_rotation
+function parseSeatMapping(
+  value: Readonly<Record<string, unknown>>,
+  source: ConfigurationSource,
+  pathName: string,
+  issues: CoreIssue[],
+): FurnitureSeatDefinition | undefined {
+  const positionField = field(value, ["position"]);
+  const position = positionField ? vector3(positionField[1]) : undefined;
+  if (!position) {
+    issues.push(
+      issue(
+        source,
+        "invalid-furniture-seat-position",
+        `${pathName}.position 必须是 "x,y,z" 坐标`,
+        "error",
+        `${pathName}.position`,
+      ),
+    );
+    return undefined;
+  }
+  const yawField = value.yaw;
+  const yaw = yawField === undefined ? 0 : numberValue(yawField, Number.NaN);
+  if (!Number.isFinite(yaw)) {
+    issues.push(
+      issue(
+        source,
+        "invalid-furniture-seat-yaw",
+        `${pathName}.yaw 必须是数值`,
+        "error",
+        `${pathName}.yaw`,
+      ),
+    );
+    return undefined;
+  }
+  let limitedRotation = yawField !== undefined;
+  const limit = field(value, [
+    "limit_player_rotation",
+    "limit-player-rotation",
+  ]);
+  if (limit) {
+    try {
+      limitedRotation = craftEngineBoolean(limit[1]);
+    } catch {
+      issues.push(
+        issue(
+          source,
+          "invalid-furniture-seat-limit-rotation",
+          `${pathName}.${limit[0]} 必须是布尔值`,
+          "error",
+          `${pathName}.${limit[0]}`,
+        ),
+      );
+    }
+  }
+  const force = field(value, [
+    "force_player_rotation",
+    "force-player-rotation",
+  ]);
+  const forcedRotation = force
+    ? parseForcedRotation(force[1], yaw)
+    : Number.NaN;
+  if (force && forcedRotation === undefined)
+    issues.push(
+      issue(
+        source,
+        "invalid-furniture-seat-force-rotation",
+        `${pathName}.${force[0]} 必须是布尔值或角度数值`,
+        "error",
+        `${pathName}.${force[0]}`,
+      ),
+    );
+  return {
+    position,
+    yaw,
+    limitedRotation,
+    forcePlayerRotation: forcedRotation ?? Number.NaN,
+    path: pathName,
+  };
+}
+
+// CraftEngine SeatConfig#parseForcePlayerRotation: 忽略大小写的 true 等于 yaw, false 为不调整
+function parseForcedRotation(value: unknown, yaw: number): number | undefined {
+  const text =
+    typeof value === "boolean"
+      ? String(value)
+      : typeof value === "string"
+        ? value
+        : undefined;
+  if (text !== undefined) {
+    const lowered = text.toLowerCase();
+    if (lowered === "true") return yaw;
+    if (lowered === "false") return Number.NaN;
+  }
+  const parsed = numberValue(value, Number.NaN);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+// Java 的 String.split(regex, 0) 只丢掉尾部的空段, 前导空格会留下一个空的首段
+function splitJava(text: string, separator: string): string[] {
+  const parts = text.split(separator);
+  while (parts.length > 1 && parts.at(-1) === "") parts.pop();
+  return parts;
+}
+
 function parseSeat(
   value: unknown,
   source: ConfigurationSource,
   pathName: string,
   issues: CoreIssue[],
 ): FurnitureSeatDefinition | undefined {
+  if (isRecord(value))
+    return parseSeatMapping(value, source, pathName, issues);
   if (typeof value !== "string") {
     issues.push(
       issue(
         source,
         "invalid-furniture-seat",
-        Messages.src.config.furniture.parser.text0006(pathName),
+        `座位 ${pathName} 必须是 "x,y,z [yaw [force]]" 字符串或 position/yaw 映射`,
         "error",
         pathName,
       ),
     );
     return undefined;
   }
-  const match = /^\s*([^\s]+)\s*(?:\s+([^\s]+))?\s*$/u.exec(value);
-  const position = match ? vector3(match[1]) : undefined;
-  const yaw = match?.[2] === undefined ? 0 : Number(match[2]);
+  // CraftEngine SeatConfig#fromConfig: 按单个空格切段, 坐标段用 splitValuesRestrict(",", 3) 要求正好 3 段。
+  // CE 不做 trim, 带前导空格时首段是空串, 坐标段只有 1 段会抛 PARSE_SPLIT_FAILED(ConfigValue.java:624-635)
+  const parts = splitJava(value, " ");
+  const coordinates = (parts[0] ?? "").split(",");
+  const position = coordinates.length === 3 ? vector3(parts[0]) : undefined;
+  const hasYaw = parts.length > 1;
+  const yaw = hasYaw ? numberValue(parts[1], Number.NaN) : 0;
   if (!position || !Number.isFinite(yaw)) {
     issues.push(
       issue(
@@ -495,10 +591,24 @@ function parseSeat(
     );
     return undefined;
   }
+  // 第 3 段以后 CE 不读取, 这里同样忽略
+  const forcedRotation =
+    parts.length > 2 ? parseForcedRotation(parts[2], yaw) : Number.NaN;
+  if (forcedRotation === undefined)
+    issues.push(
+      issue(
+        source,
+        "invalid-furniture-seat-force-rotation",
+        `座位 ${pathName} 的第 3 段必须是布尔值或角度数值`,
+        "error",
+        pathName,
+      ),
+    );
   return {
     position,
     yaw,
-    limitedRotation: match?.[2] !== undefined,
+    limitedRotation: hasYaw,
+    forcePlayerRotation: forcedRotation ?? Number.NaN,
     path: pathName,
   };
 }
@@ -1083,24 +1193,6 @@ function parseElement(
       ),
     );
   }
-  if (
-    builtInType &&
-    ["item_display", "item", "armor_stand"].includes(builtInType) &&
-    !booleanValue(
-      field(value, ["apply_dyed_color", "apply-dyed-color"])?.[1],
-      false,
-    )
-  ) {
-    const tintSource = field(value, ["tint_source", "tint-source"]);
-    if (tintSource)
-      validateTintSourceType(
-        tintSource[1],
-        source,
-        `${pathName}.${tintSource[0]}`,
-        options,
-        issues,
-      );
-  }
   const item =
     typeof value.item === "string" && value.item !== ""
       ? makeIdentifier(value.item.toLowerCase(), "minecraft")
@@ -1453,13 +1545,13 @@ function parseBehaviors(
 ): FurnitureBehaviorDefinition[] {
   warnAliasShadow(
     raw,
-    ["behaviors", "behavior"],
+    ["behavior", "behaviors"],
     source,
     "",
     Messages.src.config.furniture.parser.text0048,
     issues,
   );
-  const selected = field(raw, ["behaviors", "behavior"]);
+  const selected = field(raw, ["behavior", "behaviors"]);
   if (!selected) return [];
   const values = isUnknownArray(selected[1]) ? selected[1] : [selected[1]];
   return values.flatMap((entry, index) => {
@@ -1676,17 +1768,6 @@ function parseFurniture(
   issues: CoreIssue[],
 ): FurnitureDefinition | undefined {
   const id = makeIdentifier(candidate.rawId, candidate.source.pack.namespace);
-  if (!isValidIdentifier(id)) {
-    issues.push(
-      issue(
-        candidate.source,
-        "invalid-furniture-id",
-        Messages.src.config.furniture.parser.text0059(id),
-        "error",
-      ),
-    );
-    return undefined;
-  }
   if (!isRecord(candidate.value)) {
     issues.push(
       issue(
@@ -1735,7 +1816,7 @@ function parseFurniture(
     "entity_culling",
     issues,
   );
-  warnAliasShadow(raw, ["events", "event"], source, "", "events", issues);
+  warnAliasShadow(raw, ["event", "events"], source, "", "events", issues);
   warnAliasShadow(raw, ["loots", "loot"], source, "", "loot", issues);
   validateCulling(raw, source, issues);
   const variantsField = field(raw, ["variant", "variants", "placement"]);

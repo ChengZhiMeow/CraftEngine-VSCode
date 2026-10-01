@@ -16,6 +16,7 @@ import {
   type RecipeSchemaContext,
 } from "../recipe/schema.js";
 import type { ConfigurationCandidateInput } from "../model.js";
+import { CURRENT_CONFIG_VERSION } from "../registry/legacyKeys.js";
 import type { SchemaContext, SchemaField } from "../schema/types.js";
 import type { CoreIssue } from "../../diagnostics/model.js";
 import { isRecord, isUnknownArray } from "../../util/records.js";
@@ -602,6 +603,7 @@ function recipeTreeIssues(
 
 export function validateRecipe(
   candidate: ConfigurationCandidateInput,
+  configVersion: number = CURRENT_CONFIG_VERSION,
 ): readonly CoreIssue[] {
   const raw = isRecord(candidate.value) ? candidate.value : undefined;
   const recipeType = scalarText(raw?.type);
@@ -613,6 +615,7 @@ export function validateRecipe(
     domainLabel: candidateLabel(candidate),
     fieldsForContext: (context) =>
       recipeFields(candidate.value, recipeType, hasExplicitResult, context),
+    configVersion,
     issueCodes: issueCodes("recipe"),
     unknownField: (context) => {
       const schemaContext: RecipeSchemaContext = {

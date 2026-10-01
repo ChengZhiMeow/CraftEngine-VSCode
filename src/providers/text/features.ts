@@ -14,6 +14,7 @@ import type {
 import type { GlobalVariableDefinition } from "../../config/text/globalVariables.js";
 import type { CoreIssue, TextRange } from "../../diagnostics/model.js";
 import type { ImageDefinition } from "../../config/image/model.js";
+import type { GenericResourceDefinition } from "../../config/resource/model.js";
 import { deduplicateCoreIssues } from "../../util/issues.js";
 import { isRecord } from "../../util/records.js";
 import { rangeAt } from "../../util/vscode/range.js";
@@ -88,6 +89,17 @@ function isImageDefinition(value: unknown): value is ImageDefinition {
     typeof value.id === "string" &&
     isRecord(value.source) &&
     isRecord(value.spec)
+  );
+}
+
+function isAttributeDefinition(
+  value: unknown,
+): value is GenericResourceDefinition {
+  return (
+    isRecord(value) &&
+    value.kind === "attribute" &&
+    typeof value.id === "string" &&
+    isRecord(value.source)
   );
 }
 
@@ -261,6 +273,25 @@ export class CraftEngineTextFeatures
         return [item];
       });
     }
+    if (context.argumentKind === "custom-attribute-id") {
+      return (
+        this.index.forDocument(document)?.complete("attribute") ?? []
+      ).flatMap((entry) => {
+        if (
+          !isAttributeDefinition(entry.definition) ||
+          !entry.id.includes(context.prefix)
+        )
+          return [];
+          const item = new vscode.CompletionItem(
+            entry.id,
+            vscode.CompletionItemKind.Reference,
+          );
+          item.detail = `${entry.definition.source.pack.name} — 自定义属性`;
+          item.range = replace;
+          item.insertText = entry.id;
+          return [item];
+        });
+    }
     return [];
   }
 
@@ -420,6 +451,9 @@ export class CraftEngineTextFeatures
           case "server-language":
             label = Messages.src.providers.text.features.text0013;
             break;
+          case "attribute":
+            label = "自定义属性";
+            break;
         }
         const diagnostic = new vscode.Diagnostic(
           rangeAt(document, reference.range),
@@ -471,6 +505,11 @@ export class CraftEngineTextFeatures
         return snapshot.globals.resolve(reference.id).candidates.length > 0;
       case "image":
         return (catalog?.resolveImage(reference.id).candidates.length ?? 0) > 0;
+      case "attribute":
+        return (
+          catalog?.resolveGeneric("attribute", reference.id).candidates.length ??
+          0
+        ) > 0;
     }
   }
 
@@ -513,6 +552,21 @@ export class CraftEngineTextFeatures
                   : Messages.src.providers.text.features.text0017,
             ),
           }),
+        );
+      case "attribute":
+        return (
+          catalog?.resolveGeneric("attribute", reference.id).candidates ?? []
+        ).flatMap((entry) =>
+          isAttributeDefinition(entry)
+            ? [
+                {
+                  uri: entry.source.uri,
+                  range: entry.source.idRange,
+                  label: entry.id,
+                  description: `${entry.source.pack.name} — 自定义属性`,
+                },
+              ]
+            : [],
         );
     }
   }

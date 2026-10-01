@@ -37,10 +37,15 @@ export interface WorkspaceTextSnapshot {
 }
 
 interface TextDocumentCatalog {
-  complete(
-    kind: "image",
-  ): readonly { readonly id: string; readonly definition: unknown }[];
+  complete(kind: "image" | "attribute"): readonly {
+    readonly id: string;
+    readonly definition: unknown;
+  }[];
   resolveImage(id: string): { readonly candidates: readonly ImageDefinition[] };
+  resolveGeneric(
+    kind: "attribute",
+    id: string,
+  ): { readonly candidates: readonly unknown[] };
 }
 
 type TextWorkspaceSnapshot = Pick<
@@ -66,31 +71,6 @@ export interface TextWorkspaceIndex {
   readonly onDidChange: (listener: () => void) => vscode.Disposable;
   rootForDocument(document: vscode.TextDocument): string | undefined;
   forDocument(document: vscode.TextDocument): TextDocumentCatalog | undefined;
-}
-
-function packs(index: TextWorkspaceIndex): readonly PackSource[] {
-  return [
-    ...new Map(
-      [
-        ...index.packs,
-        ...index.index.resourceRoots.map((root) =>
-          standaloneTranslationPack(root, index.packs),
-        ),
-        ...index.index.items.map((entry) => entry.source.pack),
-        ...index.index.images.map((entry) => entry.source.pack),
-        ...index.index.blocks.map((entry) => entry.source.pack),
-        ...index.index.furniture.map((entry) => entry.source.pack),
-        ...index.index.equipments.map((entry) => entry.source.pack),
-        ...index.index.genericResources.map(
-          (entry) => entry.source.pack,
-        ),
-        ...index.index.opaqueSections.map((entry) => entry.source.pack),
-      ].map((pack) => [
-        `${canonicalPath(pack.resourcesRoot)}\u0000${canonicalPath(pack.configurationRoot)}`,
-        pack,
-      ]),
-    ).values(),
-  ];
 }
 
 function packForFile(
@@ -139,6 +119,8 @@ export class WorkspaceTextCatalog {
   private languageCatalogPromise: Promise<LanguageCatalog> | undefined;
   private globalGeneration = -1;
   private globalCatalog: GlobalVariableCatalog | undefined;
+  private packsGeneration = -1;
+  private packsCache: readonly PackSource[] | undefined;
 
   public constructor(
     private readonly index: TextWorkspaceIndex,
@@ -153,7 +135,7 @@ export class WorkspaceTextCatalog {
       document.getText(),
     );
     const resourcesRoot = this.index.rootForDocument(document);
-    const inputPacks = packs(this.index);
+    const inputPacks = this.packs();
     const currentPack = packForFile(parsed.uri, inputPacks, resourcesRoot);
     const parsedFiles = new Map(this.index.index.parsedFiles);
     const catalogParsed = mergeParsedFileWithGeneratedSections(
@@ -180,6 +162,40 @@ export class WorkspaceTextCatalog {
       languages: (await languages).forRoot(resourcesRoot),
       globals: globals.forRoot(resourcesRoot),
     };
+  }
+
+  // packs 只依赖不可变快照, 按代际记忆化; 未自增 generation 的快照不缓存
+  private packs(): readonly PackSource[] {
+    const generation = this.index.index.generation;
+    if (generation > 0 && generation === this.packsGeneration && this.packsCache)
+      return this.packsCache;
+    const packs = [
+      ...new Map(
+        [
+          ...this.index.packs,
+          ...this.index.index.resourceRoots.map((root) =>
+            standaloneTranslationPack(root, this.index.packs),
+          ),
+          ...this.index.index.items.map((entry) => entry.source.pack),
+          ...this.index.index.images.map((entry) => entry.source.pack),
+          ...this.index.index.blocks.map((entry) => entry.source.pack),
+          ...this.index.index.furniture.map((entry) => entry.source.pack),
+          ...this.index.index.equipments.map((entry) => entry.source.pack),
+          ...this.index.index.genericResources.map(
+            (entry) => entry.source.pack,
+          ),
+          ...this.index.index.opaqueSections.map((entry) => entry.source.pack),
+        ].map((pack) => [
+          `${canonicalPath(pack.resourcesRoot)}\u0000${canonicalPath(pack.configurationRoot)}`,
+          pack,
+        ]),
+      ).values(),
+    ];
+    if (generation > 0) {
+      this.packsGeneration = generation;
+      this.packsCache = packs;
+    }
+    return packs;
   }
 
   private languages(

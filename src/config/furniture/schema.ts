@@ -2,6 +2,7 @@ import {
   fieldsForDiscriminator,
   itemFieldsForContext,
 } from "../item/schema.js";
+import { SEAT_FIELDS } from "../block/schema.js";
 import { withTemplateSchemaFields } from "../schema/templateFields.js";
 import {
   isValidRegistryDiscriminator,
@@ -242,6 +243,12 @@ const LEGACY_COLOR_VALUES = [
   "light_purple",
   "yellow",
   "white",
+  "obfuscated",
+  "bold",
+  "strikethrough",
+  "underline",
+  "italic",
+  "reset",
 ] as const;
 const LEGACY_COLOR_DETAILS: Readonly<Record<string, string>> = {
   black: Messages.src.config.furniture.schema.text0047,
@@ -260,7 +267,25 @@ const LEGACY_COLOR_DETAILS: Readonly<Record<string, string>> = {
   light_purple: Messages.src.config.furniture.schema.text0060,
   yellow: Messages.src.config.furniture.schema.text0061,
   white: Messages.src.config.furniture.schema.text0062,
+  obfuscated: "随机乱码格式",
+  bold: "粗体格式",
+  strikethrough: "删除线格式",
+  underline: "下划线格式",
+  italic: "斜体格式",
+  reset: "重置所有格式",
 };
+
+  // BetterModel 染色层: 单层映射形式
+const TINT_LAYER_FIELDS: readonly SchemaField[] = [
+  field("source", "颜色数据来源; 与 tint_source 等价", {
+    aliases: ["tint_source"],
+    required: true,
+  }),
+  field("bone", "参与染色的骨骼名列表", {
+    aliases: ["bones", "tint_bone", "tint_bones"],
+  }),
+  bool("children", "骨骼列表是否同时作用于子骨骼", ["tint_children"]),
+];
 
 const ELEMENT_COMMON: readonly SchemaField[] = [
   field("type", Messages.src.config.furniture.schema.text0063, {
@@ -315,6 +340,10 @@ const ELEMENT_FIELDS = new Map<string, readonly SchemaField[]>([
       }),
       mapping("tint_source", Messages.src.config.furniture.schema.text0080, [
         "tint-source",
+        "tint_sources",
+        "tint-sources",
+        "copy_data",
+        "copy-data",
       ]),
       ...DISPLAY_COMMON,
     ],
@@ -379,6 +408,10 @@ const ELEMENT_FIELDS = new Map<string, readonly SchemaField[]>([
       field("position", Messages.src.config.furniture.schema.text0095),
       mapping("tint_source", Messages.src.config.furniture.schema.text0096, [
         "tint-source",
+        "tint_sources",
+        "tint-sources",
+        "copy_data",
+        "copy-data",
       ]),
     ],
   ],
@@ -404,6 +437,10 @@ const ELEMENT_FIELDS = new Map<string, readonly SchemaField[]>([
       }),
       mapping("tint_source", Messages.src.config.furniture.schema.text0105, [
         "tint-source",
+        "tint_sources",
+        "tint-sources",
+        "copy_data",
+        "copy-data",
       ]),
     ],
   ],
@@ -418,6 +455,19 @@ const ELEMENT_FIELDS = new Map<string, readonly SchemaField[]>([
       number("pitch", Messages.src.config.furniture.schema.text0109),
       bool("sight_trace", Messages.src.config.furniture.schema.text0110, [
         "sight-trace",
+      ]),
+      field("tint", "染色层列表; 每项包含 source/bone(s)/children", {
+        aliases: ["tints"],
+        snippet: "tint:\n  - source:\n      components:\n        - ${0}",
+      }),
+      field("tint_source", "颜色数据来源; tint 的单层简写", {
+        aliases: ["tint-source"],
+      }),
+      field("tint_bone", "参与染色的骨骼名列表; tint 的单层简写", {
+        aliases: ["tint_bones", "tint-bones"],
+      }),
+      bool("tint_children", "是否同时作用于子骨骼; tint 的单层简写", [
+        "tint-children",
       ]),
     ],
   ],
@@ -593,30 +643,13 @@ const BRIGHTNESS_FIELDS: readonly SchemaField[] = [
     "sky-light",
   ]),
 ];
-const TINT_SOURCE_TYPE_FIELD = field(
-  "type",
-  Messages.src.config.furniture.schema.text0160,
-  {
-    values: ["default", "craftengine:default"],
-    valueDetails: {
-      default: Messages.src.config.furniture.schema.text0161,
-      "craftengine:default": Messages.src.config.furniture.schema.text0162,
-    },
-  },
-);
+  // 家具的 tint_source 只读取 components, 没有 type 分派
 const TINT_SOURCE_FIELDS: readonly SchemaField[] = [
-  TINT_SOURCE_TYPE_FIELD,
   field("components", Messages.src.config.furniture.schema.text0163, {
     valueProvider: "component",
     snippet: "components:\n  - ${0}",
   }),
 ];
-
-function tintSourceFields(type: string | undefined): readonly SchemaField[] {
-  if (!type || localRegistryDiscriminator(type) === "default")
-    return TINT_SOURCE_FIELDS;
-  return isValidRegistryDiscriminator(type) ? [] : [TINT_SOURCE_TYPE_FIELD];
-}
 
 function mergedFields(
   ...groups: readonly (readonly SchemaField[])[]
@@ -708,6 +741,13 @@ function withoutIndexes(path: readonly string[]): string[] {
     .map((part) => part.replaceAll("-", "_"));
 }
 
+function isSeatEntryPath(nested: readonly string[]): boolean {
+  const slot = nested.at(-1);
+  return (
+    nested.at(-2) === "seats" && slot !== undefined && /^\d+$/u.test(slot)
+  );
+}
+
 function furnitureNumberProviderFields(
   compact: readonly string[],
   context: SchemaContext,
@@ -777,6 +817,8 @@ export function furnitureFieldsForContext(
         return withTemplateSchemaFields(context.path, []);
       if (compact.length === 2)
         return withTemplateSchemaFields(context.path, FURNITURE_VARIANT_FIELDS);
+      if (isSeatEntryPath(nested))
+        return withTemplateSchemaFields(context.path, SEAT_FIELDS);
       if (compact[2] === "hitboxes")
         return withTemplateSchemaFields(
           context.path,
@@ -786,11 +828,16 @@ export function furnitureFieldsForContext(
         return withTemplateSchemaFields(context.path, []);
       if (compact.at(-1) === "brightness")
         return withTemplateSchemaFields(context.path, BRIGHTNESS_FIELDS);
-      if (compact.at(-1) === "tint_source")
-        return withTemplateSchemaFields(
-          context.path,
-          tintSourceFields(context.siblingValues.get("type")),
-        );
+      if (compact.at(-2) === "tint" || compact.at(-2) === "tints")
+        return withTemplateSchemaFields(context.path, TINT_SOURCE_FIELDS);
+      if (compact.at(-1) === "tint" || compact.at(-1) === "tints")
+        return withTemplateSchemaFields(context.path, TINT_LAYER_FIELDS);
+      if (
+        ["tint_source", "tint_sources", "copy_data"].includes(
+          compact.at(-1) ?? "",
+        )
+      )
+        return withTemplateSchemaFields(context.path, TINT_SOURCE_FIELDS);
       return withTemplateSchemaFields(
         context.path,
         compact.includes("conditions") || compact.includes("condition")
@@ -834,6 +881,8 @@ export function furnitureFieldsForContext(
                     ),
                   ],
           );
+        if (isSeatEntryPath(nested))
+          return withTemplateSchemaFields(context.path, SEAT_FIELDS);
         if (compact.includes("hitboxes"))
           return withTemplateSchemaFields(
             context.path,
@@ -919,8 +968,30 @@ export function furnitureListItemField(
       valueProvider: "item-id",
     });
   if (tail === "seats")
-    return field("seat", Messages.src.config.furniture.schema.text0176);
-  if (tail === "components" && compact.includes("tint_source"))
+    return field(
+      "seat",
+      '座位; 支持 "x,y,z [yaw [force]]" 字符串或 position/yaw 映射',
+    );
+  if (
+    tail === "components" &&
+    compact.some((part) =>
+      [
+        "tint_source",
+        "tint_sources",
+        "copy_data",
+        "tint",
+        "tints",
+        "source",
+      ].includes(part),
+    )
+  )
+    return field("component", Messages.src.config.furniture.schema.text0177, {
+      valueProvider: "component",
+    });
+  if (
+    (tail === "source" || tail === "tint_source") &&
+    (compact.at(-2) === "tint" || compact.at(-2) === "tints")
+  )
     return field("component", Messages.src.config.furniture.schema.text0177, {
       valueProvider: "component",
     });

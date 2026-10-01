@@ -342,6 +342,11 @@ export class DocumentCatalog {
       case "configured-feature":
       case "placed-feature":
       case "advancement":
+      case "entity":
+      case "attribute":
+      case "attribute-operation":
+      case "equipment-set":
+      case "atlas":
         return this.resolveGeneric(kind, id);
     }
   }
@@ -425,6 +430,11 @@ export class DocumentCatalog {
       case "configured-feature":
       case "placed-feature":
       case "advancement":
+      case "entity":
+      case "attribute":
+      case "attribute-operation":
+      case "equipment-set":
+      case "atlas":
         values = this.generic(kind, activeOnly);
         break;
     }

@@ -5,6 +5,7 @@ import {
 import { Messages } from "../../messages.js";
 import { isRecord } from "../../util/records.js";
 import type { SchemaField } from "../schema/types.js";
+import { isExpressionSyntax } from "../expression/evaluator.js";
 
 export const NUMBER_PROVIDER_TYPES = [
   "fixed",
@@ -381,15 +382,37 @@ function javaDouble(value: string): boolean {
 export function isNumberProviderScalar(value: unknown): boolean {
   if (typeof value === "number" || typeof value === "boolean") return true;
   if (typeof value !== "string") return false;
-  if (value.includes("~")) {
-    const separator = value.indexOf("~");
+  const source = value.trim();
+  const scalar = (part: string): boolean => {
+    const normalized = part.trim();
     return (
-      javaDouble(value.slice(0, separator)) &&
-      javaDouble(value.slice(separator + 1))
+      javaDouble(normalized.replaceAll("_", "")) ||
+      isExpressionSyntax(normalized)
     );
+  };
+  let separator = -1;
+  let parentheses = 0;
+  let quote = "";
+  let escaped = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const current = source[index]!;
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (current === "\\") escaped = true;
+      else if (current === quote) quote = "";
+      continue;
+    }
+    if (current === '"' || current === "'") quote = current;
+    else if (current === "(") parentheses += 1;
+    else if (current === ")" && parentheses > 0) parentheses -= 1;
+    else if (current === "~" && parentheses === 0) {
+      if (separator >= 0) return isExpressionSyntax(source);
+      separator = index;
+    }
   }
-  if (value.includes("<") && value.includes(">")) return true;
-  return javaDouble(value);
+  if (separator >= 0)
+    return scalar(source.slice(0, separator)) && scalar(source.slice(separator + 1));
+  return scalar(source);
 }
 
 export type NumberProviderValidationCode =

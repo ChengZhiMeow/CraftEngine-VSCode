@@ -352,6 +352,19 @@ const AUTO_STATE_FIELD = field(
   },
 );
 
+  // auto_state 的映射形式: auto_state: { type: solid, id: xxx }
+const AUTO_STATE_DETAIL_FIELDS: readonly SchemaField[] = [
+  field("type", "自动状态组; 省略时使用 solid", {
+    values: AUTO_STATE_GROUPS,
+    valueDetails: AUTO_STATE_DETAILS,
+    snippet: `type: \${1|${AUTO_STATE_GROUPS.join(",")}|}`,
+  }),
+  field(
+    "id",
+    "自定义自动状态缓存 id; 相同 id 的方块共用同一个自动分配的原版方块状态",
+  ),
+];
+
 const VISUAL_FIELDS: readonly SchemaField[] = [
   AUTO_STATE_FIELD,
   field("state", Messages.src.config.block.schema.text0106, {
@@ -368,6 +381,7 @@ const VISUAL_FIELDS: readonly SchemaField[] = [
     valueProvider: "model",
     snippet: "model:\n  path: ${0}",
   }),
+  field("blueprint", "blueprint 文件夹内的 .bbmodel 路径"),
   list("entity_renderer", Messages.src.config.block.schema.text0110, [
     "entity-renderer",
     "entity_render",
@@ -383,15 +397,11 @@ export const BLOCK_ROOT_FIELDS: readonly SchemaField[] = [
   list("behavior", Messages.src.config.block.schema.text0115, ["behaviors"]),
   mapping("events", Messages.src.config.block.schema.text0116, ["event"]),
   field("loot", Messages.src.config.block.schema.text0117, {
-    aliases: ["loots"],
     valueProvider: "loot-id",
     snippet: "loot:\n  ${0}",
   }),
   mapping("entity_culling", Messages.src.config.block.schema.text0118, [
     "entity-culling",
-  ]),
-  blockTagList("client_bound_tags", Messages.src.config.block.schema.text0119, [
-    "client-bound-tags",
   ]),
   field("template", Messages.src.config.block.schema.text0120, {
     aliases: ["templates"],
@@ -431,6 +441,7 @@ const MODEL_FIELDS: readonly SchemaField[] = [
     aliases: ["textures"],
     valueProvider: "texture",
   }),
+  field("blueprint", "blueprint 文件夹内的 .bbmodel 路径"),
   number("x", Messages.src.config.block.schema.text0133),
   number("y", Messages.src.config.block.schema.text0134),
   number("z", Messages.src.config.block.schema.text0135),
@@ -532,7 +543,7 @@ const RENDERER_COMMON: readonly SchemaField[] = [
     valueDetails: BLOCK_RENDERER_TYPE_DETAILS,
   }),
   field("position", Messages.src.config.block.schema.text0180),
-  list("conditions", Messages.src.config.block.schema.text0181),
+  list("conditions", Messages.src.config.block.schema.text0181, ["condition"]),
 ];
 const DISPLAY_RENDERER_COMMON: readonly SchemaField[] = [
   field("scale", Messages.src.config.block.schema.text0182),
@@ -698,6 +709,32 @@ const TINT_SOURCE_FIELDS: readonly SchemaField[] = [
   number("index", Messages.src.config.block.schema.text0230),
 ];
 
+export const BLOCK_PUSH_REACTIONS = [
+  "normal",
+  "destroy",
+  "block",
+  "ignore",
+  "push_only",
+  "push_pull",
+  "push",
+  "popped",
+  "immoveable",
+  "ignore_entity",
+] as const;
+
+export const BLOCK_PUSH_REACTION_DETAILS: Readonly<Record<string, string>> = {
+  normal: Messages.src.config.block.schema.text0255,
+  destroy: Messages.src.config.block.schema.text0256,
+  block: Messages.src.config.block.schema.text0257,
+  ignore: Messages.src.config.block.schema.text0258,
+  push_only: Messages.src.config.block.schema.text0259,
+  push_pull: "可被活塞推拉",
+  push: "只能被活塞推动",
+  popped: "被活塞推动时破坏并掉落",
+  immoveable: "不可被活塞移动",
+  ignore_entity: "忽略实体与活塞的推动",
+};
+
 function tintSourceFields(type: string | undefined): readonly SchemaField[] {
   if (!type || localRegistryDiscriminator(type) === "default")
     return TINT_SOURCE_FIELDS;
@@ -733,14 +770,8 @@ export const BLOCK_SETTING_FIELDS: readonly SchemaField[] = [
   bool("propagate_skylight", Messages.src.config.block.schema.text0252),
   bool("burnable", Messages.src.config.block.schema.text0253),
   field("push_reaction", Messages.src.config.block.schema.text0254, {
-    values: ["normal", "destroy", "block", "ignore", "push_only"],
-    valueDetails: {
-      normal: Messages.src.config.block.schema.text0255,
-      destroy: Messages.src.config.block.schema.text0256,
-      block: Messages.src.config.block.schema.text0257,
-      ignore: Messages.src.config.block.schema.text0258,
-      push_only: Messages.src.config.block.schema.text0259,
-    },
+    values: BLOCK_PUSH_REACTIONS,
+    valueDetails: BLOCK_PUSH_REACTION_DETAILS,
   }),
   field("instrument", Messages.src.config.block.schema.text0260, {
     values: BLOCK_INSTRUMENTS,
@@ -758,12 +789,16 @@ export const BLOCK_SETTING_FIELDS: readonly SchemaField[] = [
   bool("can_occlude", Messages.src.config.block.schema.text0265),
   bool("require_correct_tools", Messages.src.config.block.schema.text0266),
   bool("respect_tool_component", Messages.src.config.block.schema.text0267),
+  number("required_break_power", "破坏方块所需的最低工具等级"),
   bool(
     "use_shape_for_light_occlusion",
     Messages.src.config.block.schema.text0268,
   ),
   blockTagList("tags", Messages.src.config.block.schema.text0269),
   list("correct_tools", Messages.src.config.block.schema.text0270),
+  blockTagList("client_bound_tags", Messages.src.config.block.schema.text0119, [
+    "client-bound-tags",
+  ]),
   bool("block_raytrace", Messages.src.config.block.schema.text0271),
   number("bounce_restitution", Messages.src.config.block.schema.text0272),
   mapping("destroy_stages", Messages.src.config.block.schema.text0273),
@@ -783,6 +818,47 @@ const SOUND_DATA_FIELDS: readonly SchemaField[] = [
   numberProvider("volume", Messages.src.config.block.schema.text0276),
   numberProvider("pitch", Messages.src.config.block.schema.text0277),
 ];
+// CraftEngine 各方块行为 behavior.sounds 的通道, 逐个对应各 BlockBehavior 里 getSection("sounds")
+const BEHAVIOR_SOUND_CHANNELS: Readonly<Record<string, readonly string[]>> = {
+  button_block: ["on", "off"],
+  // ChimeBlockBehavior 用 ConfigKeys.of("chime|projectile_hit")
+  chime_block: ["chime", "projectile_hit"],
+  display_item_block: ["put", "take"],
+  door_block: ["open", "close"],
+  drawer_block: ["put", "take"],
+  falling_block: ["land", "destroy"],
+  fence_gate_block: ["open", "close"],
+  item_frame_block: ["put", "take", "rotate"],
+  pressure_plate_block: ["on", "off"],
+  simple_storage_block: ["open", "close"],
+  trapdoor_block: ["open", "close"],
+};
+const BEHAVIOR_SOUND_CHANNEL_DETAILS: Readonly<Record<string, string>> = {
+  open: "打开时的声音",
+  close: "关闭时的声音",
+  on: "激活时的声音",
+  off: "取消激活时的声音",
+  put: "放入物品时的声音",
+  take: "取出物品时的声音",
+  rotate: "旋转时的声音",
+  land: "落地时的声音",
+  destroy: "落地后销毁时的声音",
+  chime: "弹射物命中时的声音",
+  projectile_hit: "弹射物命中时的声音",
+};
+function behaviorSoundChannelFields(
+  type: string | undefined,
+): readonly SchemaField[] {
+  const channels = type === undefined ? undefined : BEHAVIOR_SOUND_CHANNELS[type];
+  if (!channels) return [];
+  return channels.map((name) =>
+    field(
+      name,
+      BEHAVIOR_SOUND_CHANNEL_DETAILS[name] ?? "声音事件 ID; 也支持 id/volume/pitch",
+      { valueProvider: "sound" },
+    ),
+  );
+}
 const DESTROY_STAGE_FIELDS: readonly SchemaField[] = [
   list("items", Messages.src.config.block.schema.text0278),
   field("position", Messages.src.config.block.schema.text0279),
@@ -873,7 +949,9 @@ export const BLOCK_BEHAVIOR_TYPES = [
   "vine_crop_head_block",
   "vine_crop_body_block",
   "decay_block",
+  "seagrass_like_block",
 ] as const;
+type BlockBehaviorType = (typeof BLOCK_BEHAVIOR_TYPES)[number];
 
 export const BLOCK_BEHAVIOR_TYPE_DETAILS: Readonly<Record<string, string>> = {
   empty: Messages.src.config.block.schema.text0293,
@@ -931,6 +1009,7 @@ export const BLOCK_BEHAVIOR_TYPE_DETAILS: Readonly<Record<string, string>> = {
   vine_crop_head_block: Messages.src.config.block.schema.text0344,
   vine_crop_body_block: Messages.src.config.block.schema.text0345,
   decay_block: Messages.src.config.block.schema.text0346,
+  seagrass_like_block: "要求方块放置在完整水源中的海草式行为",
 };
 
 const f = field;
@@ -949,8 +1028,25 @@ const VINE_BONE_MEAL_FIELDS: readonly SchemaField[] = [
     "grow-blocks",
   ]),
 ];
+
+  // CraftEngine SeatConfig: 座位既支持 "x,y,z [yaw [force]]" 字符串, 也支持映射形式
+export const SEAT_FIELDS: readonly SchemaField[] = [
+  field("position", "座位相对于家具/方块的位置", { required: true }),
+  number("yaw", "座位朝向; 省略时按实体默认朝向"),
+  bool(
+    "limit_player_rotation",
+    "是否限制玩家视角; 默认与是否写了 yaw 一致",
+    ["limit-player-rotation"],
+  ),
+  field(
+    "force_player_rotation",
+    "强制玩家视角角度; true 表示与 yaw 相同, false 表示不调整",
+    { aliases: ["force-player-rotation"] },
+  ),
+];
 const behaviorFields = new Map<string, readonly SchemaField[]>([
   ["empty", []],
+  ["seagrass_like_block", []],
   [
     "bush_block",
     [
@@ -1007,6 +1103,15 @@ const behaviorFields = new Map<string, readonly SchemaField[]>([
       l("excluded_properties", Messages.src.config.block.schema.text0365, [
         "excluded-properties",
       ]),
+      field(
+        "tool",
+        "可用工具或物品标签(# 开头); 默认 #minecraft:axes",
+        {
+          aliases: ["tools"],
+          valueProvider: "item-id",
+        },
+      ),
+      field("sound", "剥皮时播放的声音", { valueProvider: "sound" }),
     ],
   ],
   [
@@ -1017,6 +1122,10 @@ const behaviorFields = new Map<string, readonly SchemaField[]>([
         valueProvider: "configured-feature-id",
         registry: "minecraft:worldgen/configured_feature",
         required: true,
+      }),
+      f("structure", "原版结构 ID; 与 feature 二选一, 同时存在时优先生成结构", {
+        valueProvider: "registry",
+        registry: "minecraft:worldgen/structure",
       }),
       n("bone_meal_success_chance", Messages.src.config.block.schema.text0367, [
         "bone-meal-success-chance",
@@ -1569,6 +1678,10 @@ const behaviorFields = new Map<string, readonly SchemaField[]>([
     ],
   ],
 ]);
+  // behaviorFields 与 BLOCK_BEHAVIOR_TYPES 一一对应, 用 Map 自身的键做收窄
+function isBlockBehaviorType(type: string): type is BlockBehaviorType {
+  return behaviorFields.has(type);
+}
 
 const BLOCK_BEHAVIOR_NUMBER_PROVIDER_FIELDS = new Map<
   string,
@@ -1721,6 +1834,7 @@ function visualFields(
 ): readonly SchemaField[] {
   if (path.length === 0) return VISUAL_FIELDS;
   const first = path[0];
+  if (first === "auto_state") return AUTO_STATE_DETAIL_FIELDS;
   if (first === "model" || first === "models") {
     const modelPath = path.slice(1).filter((entry) => !/^\d+$/u.test(entry));
     const generationIndex = modelPath.lastIndexOf("generation");
@@ -1760,6 +1874,13 @@ function visualFields(
     return rendererFields(context.siblingValues.get("type"));
   }
   return [];
+}
+
+function isSeatEntryPath(nested: readonly string[]): boolean {
+  const slot = nested.at(-1);
+  return (
+    nested.at(-2) === "seats" && slot !== undefined && /^\d+$/u.test(slot)
+  );
 }
 
 export function blockFieldsForContext(
@@ -1838,12 +1959,17 @@ export function blockFieldsForContext(
   if (first === "behavior" || first === "behaviors") {
     const compact = nested.filter((entry) => !/^\d+$/u.test(entry));
     const tail = compact.at(-1);
+    if (isSeatEntryPath(nested)) return SEAT_FIELDS;
     if (tail === "particles" || tail === "particle") {
       return particleConfigFieldsForType(context.siblingValues.get("particle"));
     }
     if (tail === "bone_meal") return VINE_BONE_MEAL_FIELDS;
-    const soundIndex = compact.indexOf("sounds");
-    if (soundIndex >= 0 && compact.length > soundIndex + 1)
+    // behavior.sounds 由该行为自己的通道表接管, 不能再回退成整张 behavior 字段表
+    if (tail === "sounds")
+      return behaviorSoundChannelFields(ancestorBlockBehaviorType(context));
+    if (compact.includes("sounds")) return SOUND_DATA_FIELDS;
+    const singleSoundIndex = compact.indexOf("sound");
+    if (singleSoundIndex >= 0 && compact.length > singleSoundIndex)
       return SOUND_DATA_FIELDS;
     if (nested.includes("conditions") || nested.includes("condition")) {
       return fieldsForDiscriminator(
@@ -1857,21 +1983,22 @@ export function blockFieldsForContext(
       values: BLOCK_BEHAVIOR_TYPES,
       valueDetails: BLOCK_BEHAVIOR_TYPE_DETAILS,
     });
-    if (
-      rawType &&
-      (!type ||
-        !BLOCK_BEHAVIOR_TYPES.includes(
-          type as (typeof BLOCK_BEHAVIOR_TYPES)[number],
-        ))
-    ) {
+    if (rawType && (!type || !isBlockBehaviorType(type))) {
       return isValidRegistryDiscriminator(rawType) ? [] : [common];
     }
-    return mergedFields(
-      [common],
-      type
-        ? (behaviorFields.get(type) ?? [])
-        : [...behaviorFields.values()].flat(),
-    );
+    const typeFields = type
+      ? behaviorFields.get(type)!
+      : [...behaviorFields.values()].flat();
+      // 写了 structure 时 feature / configured_feature 不再是必填
+    const fields =
+      type === "sapling_block" && context.siblingValues.has("structure")
+        ? typeFields.map((candidate) =>
+            candidate.label === "feature"
+              ? { ...candidate, required: false }
+              : candidate,
+          )
+        : typeFields;
+    return mergedFields([common], fields);
   }
   return [];
 }
@@ -1892,6 +2019,12 @@ export function blockListItemField(
 ): SchemaField | undefined {
   const nested = path.slice(1).map((entry) => entry.replaceAll("-", "_"));
   const tail = nested.at(-1);
+  const compact = nested.filter((entry) => !/^\d+$/u.test(entry));
+  if (compact.at(-1) === "seats")
+    return field(
+      "seat",
+      '座位; 支持 "x,y,z [yaw [force]]" 字符串或 position/yaw 映射',
+    );
   if (
     tail === "tags" ||
     tail?.endsWith("_block_tags") ||
@@ -1906,6 +2039,10 @@ export function blockListItemField(
   if (tail === "texture" || tail === "textures")
     return field("texture", Messages.src.config.block.schema.text0517, {
       valueProvider: "texture",
+    });
+  if (tail === "tool" || tail === "tools")
+    return field("tool", "可用工具或物品标签(# 开头)", {
+      valueProvider: "item-id",
     });
   if (tail === "components" && nested.includes("tint_source"))
     return field("component", Messages.src.config.block.schema.text0518, {

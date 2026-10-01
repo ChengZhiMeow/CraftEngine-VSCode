@@ -4,6 +4,7 @@ import path from "node:path";
 import type { PackSource } from "../config/model.js";
 import { parsePackMetadata } from "../config/parsing/packMetadata.js";
 import { canonicalPath } from "../util/paths.js";
+import { DEFAULT_MINECRAFT_VERSION } from "../util/version.js";
 
 export interface DiscoveredWorkspace {
   readonly resourceRoots: readonly string[];
@@ -247,6 +248,8 @@ async function scanPack(
     configurationRoot: path.join(folder, "configuration"),
     resourcePackRoot: baseResourcePackRoot,
     baseResourcePackRoot,
+    blueprintRoot: path.join(folder, "blueprint"),
+    scriptRoot: path.join(folder, "script"),
     loadOrder: packOrder * 1000,
   };
   const packs: PackSource[] = [base];
@@ -257,31 +260,29 @@ async function scanPack(
   const subpacksRoot = path.join(folder, "subpacks");
   if (await directory(subpacksRoot)) {
     const entries = await fs.readdir(subpacksRoot, { withFileTypes: true });
-    const declarationOrder = new Map(selected.map((id, index) => [id, index]));
-    const filesystemOrder = new Map(
-      entries.map((entry, index) => [entry.name, index]),
-    );
-    entries.sort(
-      (left, right) =>
-        (declarationOrder.get(left.name) ??
-          selected.length + (filesystemOrder.get(left.name) ?? 0)) -
-        (declarationOrder.get(right.name) ??
-          selected.length + (filesystemOrder.get(right.name) ?? 0)),
-    );
     let subpackOrder = 1;
-    for (const entry of entries) {
-      if (!(await directory(path.join(subpacksRoot, entry.name)))) continue;
-      const subpackFolder = path.join(subpacksRoot, entry.name);
+    const indexed = new Set<string>();
+    const addSubpack = async (
+      id: string,
+      subpackFolder: string,
+      active: boolean,
+    ): Promise<void> => {
+      const normalizedFolder = path.normalize(subpackFolder);
+      if (indexed.has(normalizedFolder) || !(await directory(normalizedFolder)))
+        return;
+      indexed.add(normalizedFolder);
       const pack: PackSource = {
         resourcesRoot,
         folder,
         name: folderName,
         namespace,
-        active: enabled && selectedSet.has(entry.name),
-        subpack: entry.name,
-        configurationRoot: path.join(subpackFolder, "configuration"),
-        resourcePackRoot: path.join(subpackFolder, "resourcepack"),
+        active: enabled && active,
+        subpack: id,
+        configurationRoot: path.join(normalizedFolder, "configuration"),
+        resourcePackRoot: path.join(normalizedFolder, "resourcepack"),
         baseResourcePackRoot,
+        blueprintRoot: path.join(normalizedFolder, "blueprint"),
+        scriptRoot: path.join(normalizedFolder, "script"),
         loadOrder: packOrder * 1000 + subpackOrder,
       };
       subpackOrder += 1;
@@ -291,6 +292,20 @@ async function scanPack(
           (filePath) => ({ path: filePath, pack }),
         ),
       );
+    };
+    for (const id of selected) {
+      const subpackFolder = path.isAbsolute(id)
+        ? id
+        : path.resolve(subpacksRoot, id);
+      await addSubpack(id, subpackFolder, true);
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || selectedSet.has(entry.name)) continue;
+      await addSubpack(
+        entry.name,
+        path.join(subpacksRoot, entry.name),
+        false,
+      );
     }
   }
   return { packs, files };
@@ -299,7 +314,7 @@ async function scanPack(
 export async function scanResources(
   resourceRoots: readonly string[],
   overlay: TextOverlay = new Map(),
-  targetVersion = "26.2",
+  targetVersion = DEFAULT_MINECRAFT_VERSION,
 ): Promise<DiscoveredWorkspace> {
   const packs: PackSource[] = [];
   const configurationFiles: Array<{ path: string; pack: PackSource }> = [];
@@ -342,7 +357,7 @@ export async function discoverWorkspace(
   inputs: readonly string[],
   manualRoots: readonly string[] = [],
   overlay: TextOverlay = new Map(),
-  targetVersion = "26.2",
+  targetVersion = DEFAULT_MINECRAFT_VERSION,
 ): Promise<DiscoveredWorkspace> {
   const roots = await discoverResourcesRoots(inputs, manualRoots);
   return scanResources(roots, overlay, targetVersion);

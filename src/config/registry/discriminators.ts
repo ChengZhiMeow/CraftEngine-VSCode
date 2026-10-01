@@ -17,16 +17,21 @@ export function isRegistryDiscriminatorSyntax(
   namespace: "craftengine" | "minecraft",
 ): boolean {
   return (
-    !value.includes(":") || value.toLowerCase().startsWith(`${namespace}:`)
+    !value.includes(":") || value.startsWith(`${namespace}:`)
   );
 }
 
-  // 这里只能判断 ID 写法对不对, 不能判断它是否已在游戏中注册
+  // 判别式字符串本身没有字符集限制: CE 先拼 Key 再查注册表(CommonFunctions.java:96-101),
+  // 空值会被 getNonEmptyString 直接拦下; 只有标识符形态的取值会走
+  // ConfigValue.getAsIdentifier 的先转小写再按 Identifier.isValid 校验(ConfigValue.java:363-378,
+  // Identifier.java:6-26)。这里用同一套写法规则区分「写法像合法 ID 但没注册」与「写法本身就不对」,
+  // 只影响诊断的严重程度, 不代表能否注册。
 export function isValidRegistryDiscriminator(
   value: string,
   defaultNamespace: "craftengine" | "minecraft" = "craftengine",
 ): boolean {
   return (
+    value.length > 0 &&
     value.trim() === value &&
     isValidIdentifier(makeIdentifier(value, defaultNamespace))
   );

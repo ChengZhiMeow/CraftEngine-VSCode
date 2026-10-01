@@ -137,6 +137,7 @@ export const ITEM_ROOT_FIELDS: readonly SchemaField[] = [
     aliases: ["textures"],
     valueProvider: "texture",
   }),
+  field("blueprint", "Blockbench .bbmodel 文件或按材质槽位排列的文件列表"),
   mapping("legacy_model", Messages.src.config.item.schema.text0014, [
     "legacy-model",
   ]),
@@ -144,16 +145,17 @@ export const ITEM_ROOT_FIELDS: readonly SchemaField[] = [
   mapping("client_bound_data", Messages.src.config.item.schema.text0016, [
     "client-bound-data",
   ]),
+  mapping("override_data", "覆盖原版物品服务端默认数据", [
+    "override-data",
+  ]),
   mapping("settings", Messages.src.config.item.schema.text0017),
   list("behaviors", Messages.src.config.item.schema.text0018, ["behavior"]),
   mapping("events", Messages.src.config.item.schema.text0019, ["event"]),
   mapping("updater", Messages.src.config.item.schema.text0020),
   field("category", Messages.src.config.item.schema.text0021, {
+    aliases: ["categories"],
     valueProvider: "category-id",
   }),
-  bool("skip_obfuscation", Messages.src.config.item.schema.text0022, [
-    "skip-obfuscation",
-  ]),
   bool("hand_animation_on_swap", Messages.src.config.item.schema.text0023, [
     "hand-animation-on-swap",
   ]),
@@ -191,8 +193,13 @@ export const ITEM_DATA_FIELDS: readonly SchemaField[] = [
   mapping("equippable", Messages.src.config.item.schema.text0039),
   field(
     "overwritable_equippable_asset_id",
-    Messages.src.config.item.schema.text0040,
-    { valueProvider: "equipment-id" },
+    `${Messages.src.config.item.schema.text0040}；保留值 craftengine:disable_armor_rendering 表示禁用盔甲渲染`,
+    {
+      valueProvider: "equipment-id",
+      valueDetails: {
+        "craftengine:disable_armor_rendering": "CraftEngine 保留值：禁用该装备的盔甲渲染",
+      },
+    },
   ),
   mapping("enchantments", Messages.src.config.item.schema.text0041),
   mapping("enchantment", Messages.src.config.item.schema.text0042),
@@ -240,6 +247,17 @@ export const ITEM_DATA_FIELDS: readonly SchemaField[] = [
   field("painting_variant", Messages.src.config.item.schema.text0077, {
     valueProvider: "painting-id",
   }),
+  mapping("written_book_content", "设置可解析 MiniMessage 的成书内容", [
+    "written-book-content",
+  ]),
+  mapping("random_values", "生成并持久化命名随机值", [
+    "random-values",
+    "randoms",
+  ]),
+  field("functions", "构建物品时执行通用函数", {
+    aliases: ["function"],
+    snippet: "functions:\n  - type: ${0}",
+  }),
 ];
 
 export const ITEM_SETTING_FIELDS: readonly SchemaField[] = [
@@ -252,6 +270,7 @@ export const ITEM_SETTING_FIELDS: readonly SchemaField[] = [
     "destroy-on-death-chance",
   ]),
   bool("renameable", Messages.src.config.item.schema.text0082),
+  bool("prevent_break", "阻止物品耐久耗尽时损坏", ["prevent-break"]),
   field("drop_display", Messages.src.config.item.schema.text0083, {
     aliases: ["drop-display"],
   }),
@@ -261,7 +280,13 @@ export const ITEM_SETTING_FIELDS: readonly SchemaField[] = [
   list("anvil_repair_item", Messages.src.config.item.schema.text0085, [
     "anvil-repair-item",
   ]),
+  list("drag_repair_item", "拖动物品进行修复的材料与数值规则", [
+    "drag-repair-item",
+  ]),
   number("fuel_time", Messages.src.config.item.schema.text0086, ["fuel-time"]),
+  number("break_power", "该物品可满足的自定义方块破坏等级", [
+    "break-power",
+  ]),
   field("consume_replacement", Messages.src.config.item.schema.text0087, {
     aliases: ["consume-replacement"],
     valueProvider: "item-id",
@@ -277,6 +302,9 @@ export const ITEM_SETTING_FIELDS: readonly SchemaField[] = [
   list("tags", Messages.src.config.item.schema.text0090),
   mapping("equippable", Messages.src.config.item.schema.text0091),
   mapping("equipment", Messages.src.config.item.schema.text0092),
+  mapping("equipment_lod", "远距离时改用其他装备资源渲染该物品", [
+    "equipment-lod",
+  ]),
   bool("can_place", Messages.src.config.item.schema.text0093, ["can-place"]),
   bool("trigger_advancement", Messages.src.config.item.schema.text0094, [
     "trigger-advancement",
@@ -314,6 +342,15 @@ export const ITEM_SETTING_FIELDS: readonly SchemaField[] = [
   ]),
   number("hat_height", Messages.src.config.item.schema.text0107, [
     "hat-height",
+  ]),
+  list("equipment_set_part", "物品所属套装及计数槽位", [
+    "equipment-set-part",
+  ]),
+  list("attribute_modifiers", "物品提供的 CraftEngine 自定义属性修饰器", [
+    "attribute-modifiers",
+  ]),
+  list("equipment_potion_effects", "装备时维持的药水效果", [
+    "equipment-potion-effects",
   ]),
 ];
 
@@ -478,14 +515,103 @@ const SETTINGS_NESTED_FIELDS = new Map<string, readonly SchemaField[]>([
       bool("anvil_combine", Messages.src.config.item.schema.text0140, [
         "anvil-combine",
       ]),
+      bool("grindstone_repair", "允许砂轮修复或清除该物品数据", [
+        "grindstone-repair",
+      ]),
     ],
   ],
   [
     "anvil_repair_item",
     [
       list("target", Messages.src.config.item.schema.text0141),
-      number("amount", Messages.src.config.item.schema.text0142),
-      number("percent", Messages.src.config.item.schema.text0143),
+      numberProvider("amount", Messages.src.config.item.schema.text0142),
+      numberProvider("percent", Messages.src.config.item.schema.text0143),
+    ],
+  ],
+  [
+    "drag_repair_item",
+    [
+      list("target", "允许拖入进行修复的物品 ID"),
+      numberProvider("amount", "每个材料修复的固定耐久"),
+      numberProvider("percent", "每个材料修复的最大耐久比例"),
+      field("sound", "成功修复时播放的 SoundData", {
+        valueProvider: "sound",
+      }),
+    ],
+  ],
+  [
+    "equipment_set_part",
+    [
+      list("slots", "物品计入套装件数的物理槽位"),
+      list("sets", "物品所属的装备套装 ID"),
+    ],
+  ],
+  [
+    "attribute_modifiers",
+    [
+      field("type", "要修改的自定义属性 ID", {
+        valueProvider: "custom-attribute",
+        required: true,
+      }),
+      field("id", "唯一属性修饰器 ID", { required: true }),
+      numberProvider("amount", "属性修饰量", [], true),
+      field("operation", "属性运算 ID", {
+        valueProvider: "attribute-operation",
+        required: true,
+      }),
+      field("scope", "属性修饰器作用域", {
+        values: ["entity", "weapon"],
+      }),
+      field("slot", "修饰器生效的装备槽位或槽位组", {
+        values: [
+          "any",
+          "mainhand",
+          "main_hand",
+          "offhand",
+          "off_hand",
+          "hand",
+          "feet",
+          "boots",
+          "boot",
+          "shoes",
+          "legs",
+          "leg",
+          "leggings",
+          "chest",
+          "chestplate",
+          "head",
+          "helmet",
+          "hat",
+          "armor",
+          "body",
+          "saddle",
+        ],
+        required: true,
+      }),
+      list("condition", "属性修饰器生效条件", ["conditions"]),
+      number("update_interval", "动态修饰器重新计算间隔", [
+        "update-interval",
+      ]),
+    ],
+  ],
+  [
+    "equipment_potion_effects",
+    [
+      field("slot", "药水效果生效的装备槽位或槽位组", {
+        required: true,
+      }),
+      field("type", "药水效果 ID", {
+        valueProvider: "effect",
+        required: true,
+      }),
+      numberProvider("amplifier", "零起始药水等级"),
+      bool("ambient", "环境效果外观"),
+      bool("particles", "显示药水粒子"),
+      bool("show_icon", "显示 HUD 图标", ["show-icon"]),
+      list("condition", "维持药水效果的条件", ["conditions"]),
+      number("update_interval", "重新检查条件的 tick 间隔", [
+        "update-interval",
+      ]),
     ],
   ],
   [
@@ -518,6 +644,17 @@ const SETTINGS_NESTED_FIELDS = new Map<string, readonly SchemaField[]>([
       ]),
       mapping("sounds", Messages.src.config.item.schema.text0153),
       mapping("display", Messages.src.config.item.schema.text0154),
+    ],
+  ],
+  [
+    "equipment_lod",
+    [
+      field("asset_id", "远距离渲染使用的装备资源 ID", {
+        aliases: ["asset-id"],
+        valueProvider: "equipment-id",
+        required: true,
+      }),
+      number("distance", "启用回退渲染的距离；默认 32"),
     ],
   ],
 ]);
@@ -558,7 +695,6 @@ export const ITEM_BEHAVIOR_TYPES = [
   "liquid_collision_furniture_item",
   "flint_and_steel_item",
   "compostable_item",
-  "axe_item",
   "double_high_block_item",
   "wall_block_item",
   "ceiling_block_item",
@@ -575,7 +711,6 @@ const ITEM_BEHAVIOR_TYPE_DETAILS = {
   liquid_collision_furniture_item: Messages.src.config.item.schema.text0167,
   flint_and_steel_item: Messages.src.config.item.schema.text0168,
   compostable_item: Messages.src.config.item.schema.text0169,
-  axe_item: Messages.src.config.item.schema.text0170,
   double_high_block_item: Messages.src.config.item.schema.text0171,
   wall_block_item: Messages.src.config.item.schema.text0172,
   ceiling_block_item: Messages.src.config.item.schema.text0173,
@@ -659,7 +794,6 @@ const BEHAVIOR_FIELDS = new Map<string, readonly SchemaField[]>([
     "compostable_item",
     [number("chance", Messages.src.config.item.schema.text0185)],
   ],
-  ["axe_item", []],
   [
     "range_mining_item",
     [
@@ -711,6 +845,8 @@ export const CONDITION_TYPES = [
   "has_player",
   "has_item",
   "match_item",
+  "equipment",
+  "equipment_set",
   "match_entity",
   "match_block",
   "match_block_property",
@@ -724,6 +860,7 @@ export const CONDITION_TYPES = [
   "random",
   "distance",
   "permission",
+  "has_discovered_recipe",
   "equals",
   "string_equals",
   "regex",
@@ -732,17 +869,25 @@ export const CONDITION_TYPES = [
   "is_null",
   "hand",
   "on_cooldown",
+  "on_item_cooldown",
   "inventory_has_item",
   "match_furniture_variant",
   "is_bedrock_player",
+  "js",
+  "open_water",
+  "biome",
+  "world",
   "test_flag",
   "worldguard:region",
+  "has_money",
 ] as const;
 
 const CONDITION_TYPE_DETAILS = {
   has_player: Messages.src.config.item.schema.text0197,
   has_item: Messages.src.config.item.schema.text0198,
   match_item: Messages.src.config.item.schema.text0199,
+  equipment: "匹配实体指定槽位中的物品 ID 或标签",
+  equipment_set: "匹配实体当前装备套装件数",
   match_entity: Messages.src.config.item.schema.text0200,
   match_block: Messages.src.config.item.schema.text0201,
   match_block_property: Messages.src.config.item.schema.text0202,
@@ -756,6 +901,7 @@ const CONDITION_TYPE_DETAILS = {
   random: Messages.src.config.item.schema.text0210,
   distance: Messages.src.config.item.schema.text0211,
   permission: Messages.src.config.item.schema.text0212,
+  has_discovered_recipe: "检查玩家是否已解锁指定配方",
   equals: Messages.src.config.item.schema.text0213,
   string_equals: Messages.src.config.item.schema.text0214,
   regex: Messages.src.config.item.schema.text0215,
@@ -764,14 +910,45 @@ const CONDITION_TYPE_DETAILS = {
   is_null: Messages.src.config.item.schema.text0218,
   hand: Messages.src.config.item.schema.text0219,
   on_cooldown: Messages.src.config.item.schema.text0220,
+  on_item_cooldown: "检查指定物品冷却组是否仍在冷却",
   inventory_has_item: Messages.src.config.item.schema.text0221,
   match_furniture_variant: Messages.src.config.item.schema.text0222,
   is_bedrock_player: Messages.src.config.item.schema.text0223,
+  js: "调用 JavaScript 函数并读取布尔结果",
+  open_water: "检查钓鱼上下文是否位于开放水域",
+  biome: "匹配当前位置的生物群系",
+  world: "匹配当前世界名称",
   test_flag: Messages.src.config.item.schema.text0224,
   "worldguard:region": Messages.src.config.item.schema.text0225,
+  has_money: "检查玩家余额是否足够（需要 Vault 与经济插件）",
 } satisfies Readonly<Record<(typeof CONDITION_TYPES)[number], string>>;
 
 const CONDITION_FIELDS = new Map<string, readonly SchemaField[]>([
+  [
+    "equipment",
+    [
+      field("slot", "要检查的物理装备槽位", { required: true }),
+      field("id", "允许的物品 ID 或列表", {
+        aliases: ["item", "items"],
+        valueProvider: "item-id",
+      }),
+      list("tag", "允许的 CraftEngine 物品标签", ["tags"]),
+      bool("regex", "把 id 列表作为 Java 正则表达式"),
+    ],
+  ],
+  [
+    "equipment_set",
+    [
+      field("set", "装备套装 ID", {
+        aliases: ["id"],
+        valueProvider: "equipment-set",
+        required: true,
+      }),
+      number("count", "精确装备件数", ["amount"]),
+      number("min", "最小装备件数", ["min_count", "min-count"]),
+      number("max", "最大装备件数", ["max_count", "max-count"]),
+    ],
+  ],
   [
     "match_item",
     [
@@ -851,6 +1028,20 @@ const CONDITION_FIELDS = new Map<string, readonly SchemaField[]>([
     ],
   ],
   [
+    "has_discovered_recipe",
+    [
+      field("recipe", "已解锁的配方 ID", {
+        aliases: ["id"],
+        valueProvider: "recipe-id",
+        required: true,
+      }),
+    ],
+  ],
+  [
+    "has_money",
+    [numberProvider("amount", "需要的余额", ["value"], true)],
+  ],
+  [
     "hand",
     [
       field("hand", Messages.src.config.item.schema.text0241, {
@@ -861,6 +1052,33 @@ const CONDITION_FIELDS = new Map<string, readonly SchemaField[]>([
   [
     "on_cooldown",
     [field("id", Messages.src.config.item.schema.text0242, { required: true })],
+  ],
+  [
+    "on_item_cooldown",
+    [field("id", "物品冷却组 ID", { required: true })],
+  ],
+  [
+    "js",
+    [
+      field("script", "script 文件夹下的 JavaScript 文件", {
+        required: true,
+      }),
+      field("function", "调用的 JavaScript 函数；默认 main"),
+      mapping("args", "传入 JavaScript 函数的附加参数"),
+    ],
+  ],
+  ["open_water", []],
+  [
+    "biome",
+    [
+      list("biome", "允许的生物群系 ID", ["biomes"]),
+    ],
+  ],
+  [
+    "world",
+    [
+      list("world", "允许的世界名称", ["worlds"]),
+    ],
   ],
   [
     "inventory_has_item",
@@ -879,7 +1097,7 @@ const CONDITION_FIELDS = new Map<string, readonly SchemaField[]>([
     "random",
     [
       numberProvider("value", Messages.src.config.item.schema.text0245),
-      bool("use-last", Messages.src.config.item.schema.text0246, ["use_last"]),
+      field("id", "持久随机组 ID"),
     ],
   ],
   [
@@ -1015,6 +1233,7 @@ export const FUNCTION_TYPES = [
   "rotate_furniture",
   "set_furniture_variant",
   "teleport",
+  "transfer",
   "set_variable",
   "toast",
   "damage",
@@ -1028,9 +1247,13 @@ export const FUNCTION_TYPES = [
   "set_exp",
   "set_level",
   "play_totem_animation",
+  "discover_recipe",
+  "js",
   "mythic_mobs_skill",
   "cast_mythic_skill",
   "spawn_mythic_mob",
+  "take_money",
+  "give_money",
 ] as const;
 
 const FUNCTION_TYPE_DETAILS = {
@@ -1068,6 +1291,7 @@ const FUNCTION_TYPE_DETAILS = {
   rotate_furniture: Messages.src.config.item.schema.text0296,
   set_furniture_variant: Messages.src.config.item.schema.text0297,
   teleport: Messages.src.config.item.schema.text0298,
+  transfer: "把玩家转发到代理服务器名或指定主机端口",
   set_variable: Messages.src.config.item.schema.text0299,
   toast: Messages.src.config.item.schema.text0300,
   damage: Messages.src.config.item.schema.text0301,
@@ -1081,9 +1305,13 @@ const FUNCTION_TYPE_DETAILS = {
   set_exp: Messages.src.config.item.schema.text0309,
   set_level: Messages.src.config.item.schema.text0310,
   play_totem_animation: Messages.src.config.item.schema.text0311,
+  discover_recipe: "让玩家解锁指定配方",
+  js: "调用 pack script 文件夹中的 JavaScript 函数",
   mythic_mobs_skill: Messages.src.config.item.schema.text0312,
   cast_mythic_skill: Messages.src.config.item.schema.text0313,
   spawn_mythic_mob: Messages.src.config.item.schema.text0314,
+  take_money: "扣除玩家余额（需要 Vault 与经济插件）",
+  give_money: "给予玩家余额（需要 Vault 与经济插件）",
 } satisfies Readonly<Record<(typeof FUNCTION_TYPES)[number], string>>;
 
 export const PLAYER_SELECTOR_TYPES = ["all", "self"] as const;
@@ -1689,9 +1917,24 @@ const FUNCTION_FIELDS = new Map<string, readonly SchemaField[]>([
         aliases: ["var"],
         required: true,
       }),
-      numberProvider("number", Messages.src.config.item.schema.text0431),
-      field("text", Messages.src.config.item.schema.text0432),
-      bool("as_int", Messages.src.config.item.schema.text0433, ["as-int"]),
+      field("value_type", "变量 Java 值类型", {
+        aliases: ["value-type"],
+        values: ["int", "double", "string"],
+      }),
+      field("text", Messages.src.config.item.schema.text0432, {
+        aliases: ["value"],
+      }),
+      numberProvider("number", Messages.src.config.item.schema.text0431, [
+        "value",
+      ]),
+    ],
+  ],
+  [
+    "transfer",
+    [
+      field("server", "代理网络中的目标服务器名"),
+      field("host", "玩家直接连接的目标主机"),
+      number("port", "目标端口；默认 25565"),
     ],
   ],
   [
@@ -1819,6 +2062,27 @@ const FUNCTION_FIELDS = new Map<string, readonly SchemaField[]>([
     ],
   ],
   [
+    "discover_recipe",
+    [
+      field("recipe", "要让玩家解锁的配方 ID", {
+        aliases: ["id"],
+        valueProvider: "recipe-id",
+        required: true,
+      }),
+      TARGET,
+    ],
+  ],
+  [
+    "js",
+    [
+      field("script", "script 文件夹下的 JavaScript 文件", {
+        required: true,
+      }),
+      field("function", "要调用的 JavaScript 函数", { required: true }),
+      field("args", "传给 JavaScript 的 Map 或列表"),
+    ],
+  ],
+  [
     "mythic_mobs_skill",
     [
       field("skill", Messages.src.config.item.schema.text0460, {
@@ -1848,6 +2112,14 @@ const FUNCTION_FIELDS = new Map<string, readonly SchemaField[]>([
       numberProvider("pitch", Messages.src.config.item.schema.text0467),
       numberProvider("yaw", Messages.src.config.item.schema.text0468),
     ],
+  ],
+  [
+    "take_money",
+    [numberProvider("amount", "扣除的金额", ["value"], true), TARGET],
+  ],
+  [
+    "give_money",
+    [numberProvider("amount", "给予的金额", ["value"], true), TARGET],
   ],
 ]);
 
@@ -2253,6 +2525,7 @@ const SPECIAL_MODEL_FIELDS = new Map<string, readonly SchemaField[]>([
   [
     "banner",
     [
+      field("attachment", Messages.src.config.item.schema.text0577),
       field("color", Messages.src.config.item.schema.text0555, {
         required: true,
       }),
@@ -2479,8 +2752,11 @@ export const EVENT_TRIGGERS = [
   "eat",
   "consume",
   "drink",
-  "break",
+  "block_break",
   "dig",
+  "item_break",
+  "break",
+  "furniture_break",
   "place",
   "build",
   "pick_up",
@@ -2569,6 +2845,7 @@ const DATA_NESTED = new Map<string, readonly SchemaField[]>([
         },
       }),
       field("id", Messages.src.config.item.schema.text0599, { required: true }),
+      bool("replace", "整体替换当前物品而非合并外部插件物品"),
     ],
   ],
   [
@@ -2745,7 +3022,7 @@ const LORE_MODIFICATION_FIELDS: readonly SchemaField[] = [
   bool("split_lines", Messages.src.config.item.schema.text0633, [
     "split-lines",
   ]),
-  list("conditions", Messages.src.config.item.schema.text0634),
+  list("conditions", Messages.src.config.item.schema.text0634, ["condition"]),
 ];
 
 const INSERT_LORE_FIELDS: readonly SchemaField[] = [
@@ -2787,6 +3064,8 @@ const ITEM_DATA_PROCESSOR_FAMILIES = new Map<string, string>([
   ["nbt", "tags"],
   ["blockstate", "block_state"],
   ["condition", "conditional"],
+  ["randoms", "random_values"],
+  ["function", "functions"],
 ]);
 
 function itemDataProcessorFamily(name: string | undefined): string | undefined {
@@ -2832,7 +3111,11 @@ export function itemSchemaFieldForName(
     .slice(1)
     .map((entry) => entry.replaceAll("-", "_"))
     .at(-1);
-  if (parent === "data" || parent === "client_bound_data")
+  if (
+    parent === "data" ||
+    parent === "client_bound_data" ||
+    parent === "override_data"
+  )
     return itemDataProcessorField(name);
   if (parent === "settings") return itemSettingField(name);
   return schemaFieldForName(name, fields);
@@ -2902,14 +3185,22 @@ function conditionFields(type: string | undefined): readonly SchemaField[] {
 function functionFields(
   type: string | undefined,
   particle?: string,
+  valueType?: string,
 ): readonly SchemaField[] {
   const resolved = resolveFunctionOrConditionType("function", type);
   if (resolved?.external) return [];
-  const base = typedFieldsExact(
+  let base = typedFieldsExact(
     FUNCTION_COMMON,
     FUNCTION_FIELDS,
     resolved?.name,
   );
+  if (resolved?.name === "set_variable") {
+    const selected = valueType?.toLowerCase();
+    if (selected === "int" || selected === "double")
+      base = base.filter((field) => field.label !== "text");
+    else
+      base = base.filter((field) => field.label !== "number");
+  }
   return resolved?.name === "particle"
     ? mergedFields(base, particleDataFieldsForType(particle))
     : base;
@@ -3087,6 +3378,30 @@ function itemDataFields(
   )
     return ITEM_DATA_FIELDS;
   const processor = itemDataProcessorFamily(routed[1]?.replace(/#.*$/u, ""));
+  if (processor === "written_book_content")
+    return dataComponentFields(
+      "minecraft:written_book_content",
+      routed.slice(2),
+      context,
+    );
+  if (processor === "functions")
+    return routed.length >= 3
+      ? functionFields(
+          context.siblingValues.get("type"),
+          context.siblingValues.get("particle"),
+          context.siblingValues.get("value_type") ??
+            context.siblingValues.get("value-type"),
+        )
+      : [];
+  if (processor === "random_values") {
+    const tail = routed.at(-1);
+    const provider = resolveNumberProviderType(context.ancestorTypes?.[0]);
+    if (provider && !provider.external && tail)
+      return numberProviderAllowsNestedField(context.ancestorTypes?.[0], tail)
+        ? itemNumberProviderFields(context.siblingValues.get("type"))
+        : [];
+    return [];
+  }
   if (processor === "lore" || processor === "overwritable_lore")
     return LORE_MODIFICATION_FIELDS;
   if (processor === "dynamic_lore")
@@ -3115,10 +3430,14 @@ export function itemDataDynamicKeyField(
   if (itemGenerationTextureMapping(context.path))
     return ITEM_GENERATION_TEXTURE_KEY_FIELD;
   const nested = normalizedItemDataPath(context.path);
-  if (!["data", "client_bound_data"].includes(nested[0] ?? ""))
+  if (!["data", "client_bound_data", "override_data"].includes(nested[0] ?? ""))
     return undefined;
   if (nested.length === 2 && nested[1] === "dynamic_lore")
     return ITEM_DYNAMIC_LORE_CONTEXT_KEY_FIELD;
+  if (nested.length === 2 && nested[1] === "random_values")
+    return field("<random-name>", "持久化随机值名称", {
+      valueProvider: "number-provider",
+    });
   if (!["enchantments", "enchantment"].includes(nested[1] ?? ""))
     return undefined;
   if (nested.length === 2) {
@@ -3148,7 +3467,7 @@ export function itemDataListItemField(
     );
   }
   const nested = normalizedItemDataPath(path);
-  if (!["data", "client_bound_data"].includes(nested[0] ?? ""))
+  if (!["data", "client_bound_data", "override_data"].includes(nested[0] ?? ""))
     return undefined;
   const processor = nested[1];
   if (
@@ -3164,6 +3483,10 @@ export function itemDataListItemField(
       { valueProvider: "component" },
     );
   }
+  if (processor === "functions")
+    return field("type", "物品构建函数类型", {
+      valueProvider: "function-type",
+    });
   return undefined;
 }
 
@@ -3172,7 +3495,39 @@ export function itemListItemField(
 ): SchemaField | undefined {
   const nested = path.slice(1).map((entry) => entry.replaceAll("-", "_"));
   const tail = nested.at(-1);
-  if (tail === "category") {
+  if (
+    nested[0] === "settings" &&
+    nested.includes("equipment_set_part") &&
+    tail === "sets"
+  )
+    return field("set", "装备套装 ID", {
+      valueProvider: "equipment-set",
+    });
+  if (
+    nested[0] === "settings" &&
+    nested.includes("equipment_set_part") &&
+    tail === "slots"
+  )
+    return field("slot", "计入套装件数的物理槽位", {
+      values: [
+        "mainhand",
+        "offhand",
+        "head",
+        "chest",
+        "legs",
+        "feet",
+        "body",
+        "saddle",
+      ],
+    });
+  if (
+    nested[0] === "settings" &&
+    (tail === "condition" || tail === "conditions")
+  )
+    return field("type", "通用条件类型", {
+      valueProvider: "condition-type",
+    });
+  if (tail === "category" || tail === "categories") {
     return field(
       Messages.src.config.item.schema.text0667,
       Messages.src.config.item.schema.text0668,
@@ -3242,6 +3597,8 @@ export function itemListItemField(
       valueProvider: "model",
     });
   }
+  if (nested.length === 1 && nested[0] === "blueprint")
+    return field("blueprint", "blueprint 文件夹内的 .bbmodel 路径");
   return itemDataListItemField(path);
 }
 
@@ -3259,6 +3616,8 @@ export function itemDataDynamicValueField(
       semantic: fieldName,
       snippet: `${fieldName}:\n  - \${0}`,
     };
+  if (nested.length === 2 && nested[1] === "random_values")
+    return numberProvider(fieldName, "命名随机值 NumberProvider");
   return itemDataDynamicKeyField(context) &&
     !["merge", "enchantments"].includes(fieldName)
     ? number(
@@ -3273,9 +3632,9 @@ export function itemOpenMappingPath(path: readonly string[]): boolean {
   if (itemGenerationTextureMapping(path)) return true;
   const dataPath = normalizedItemDataPath(path);
   if (
-    ["data", "client_bound_data"].includes(dataPath[0] ?? "") &&
+    ["data", "client_bound_data", "override_data"].includes(dataPath[0] ?? "") &&
     dataPath.length === 2 &&
-    dataPath[1] === "dynamic_lore"
+    (dataPath[1] === "dynamic_lore" || dataPath[1] === "random_values")
   )
     return true;
   const overrides = nested.indexOf("overrides");
@@ -3296,12 +3655,16 @@ function normalizedItemDataPath(path: readonly string[]): readonly string[] {
           return dataIndex < 0 ? nested : nested.slice(dataIndex);
         })();
   if (
-    (dataPath[0] === "data" || dataPath[0] === "client_bound_data") &&
+    ["data", "client_bound_data", "override_data"].includes(
+      dataPath[0] ?? "",
+    ) &&
     dataPath[1] !== undefined
   ) {
+    const dataRoot = dataPath[0];
+    if (dataRoot === undefined) return dataPath;
     const local = localRegistryDiscriminator(dataPath[1], "craftengine");
     if (local !== undefined)
-      return [dataPath[0], local.replace(/#.*$/u, ""), ...dataPath.slice(2)];
+      return [dataRoot, local.replace(/#.*$/u, ""), ...dataPath.slice(2)];
   }
   return dataPath;
 }
@@ -3416,7 +3779,12 @@ function eventNumberProviderFields(
     ["conditions", "condition", "terms", "term"].includes(entry),
   )
     ? conditionFields(parentType)
-    : functionFields(parentType);
+    : functionFields(
+        parentType,
+        context.siblingValues.get("particle"),
+        context.siblingValues.get("value_type") ??
+          context.siblingValues.get("value-type"),
+      );
   const direct = numberProviderMappingFields(context, parentFields);
   if (direct !== undefined) return direct;
 
@@ -3572,7 +3940,11 @@ function itemFieldsForContextBase(
     .map((entry) => entry.replaceAll("-", "_"));
   if (nested.length === 0) return ITEM_ROOT_FIELDS;
   const first = nested[0];
-  if (first === "data" || first === "client_bound_data") {
+  if (
+    first === "data" ||
+    first === "client_bound_data" ||
+    first === "override_data"
+  ) {
     const dataPath = normalizedItemDataPath(context.path);
     const providerFields = itemDataNumberProviderFields(dataPath, context);
     if (providerFields !== undefined) return providerFields;
@@ -3587,6 +3959,22 @@ function itemFieldsForContextBase(
     }
     if (setting === "equipment") return SETTINGS_EQUIPMENT_FIELDS;
     if (setting === "equippable") return SETTINGS_EQUIPPABLE_FIELDS;
+    if (
+      (setting === "attribute_modifiers" ||
+        setting === "equipment_potion_effects") &&
+      nested.some((entry) => entry === "condition" || entry === "conditions")
+    )
+      return conditionFields(context.siblingValues.get("type"));
+    if (
+      setting === "attribute_modifiers" &&
+      nested.includes("amount")
+    )
+      return itemNumberProviderFields(context.siblingValues.get("type"));
+    if (
+      setting === "equipment_potion_effects" &&
+      nested.includes("amplifier")
+    )
+      return itemNumberProviderFields(context.siblingValues.get("type"));
     if (setting === "projectile" && nested[2] === "display")
       return PROJECTILE_DISPLAY_FIELDS;
     if (setting === "projectile" && nested[2] === "sounds") {
@@ -3777,6 +4165,8 @@ function itemFieldsForContextBase(
     return functionFields(
       context.siblingValues.get("type"),
       context.siblingValues.get("particle"),
+      context.siblingValues.get("value_type") ??
+        context.siblingValues.get("value-type"),
     );
   }
   if (first === "model" || first === "models") {
